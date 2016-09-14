@@ -1,3 +1,4 @@
+//-------- include start --------//
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -9,29 +10,505 @@
 #include <exception>
 #include <stdexcept>
 #include <cstdlib>
-#include <boost/rational.hpp>
+#include "mpirxx.h"
 
-template<class DegreeType, class CoeffidientType>
+namespace symbolic_alg{
+
 class poly;
+poly operator +(const poly&, const poly&);
+poly operator -(const poly&, const poly&);
+poly operator *(const poly&, const poly&);
 
-namespace aux_poly{
-    template<class Degree, class Coefficient>
+namespace aux{
+    template<
+        class Key,
+        class Mapped,
+        class Compare = std::less<Key>,
+        class Alloc = std::allocator<std::pair<const Key, Mapped>>
+    > class vector_map{
+    public:
+        using key_type = Key;
+        using mapped_type = Mapped;
+        using key_compare = Compare;
+        using value_type = std::pair<const key_type, mapped_type>;
+        using container_type = std::vector<std::pair<key_type, mapped_type>>;
+        using allocator_type = Alloc;
+        using reference = value_type&;
+        using const_reference = const value_type&;
+        using pointer = typename std::allocator_traits<allocator_type>::pointer;
+        using const_pointer = typename std::allocator_traits<allocator_type>::const_pointer;
+        using iterator = typename container_type::iterator;
+        using const_iterator = typename container_type::const_iterator;
+        using reverse_iterator = typename container_type::reverse_iterator;
+        using const_reverse_iterator = typename container_type::const_reverse_iterator;
+        using difference_type = typename container_type::difference_type;
+        using size_type = typename container_type::size_type;
+
+        class value_compare{
+            friend class vector_map;
+        public:
+            Compare comp;
+            value_compare(Compare comp) : comp(comp){}
+            using result_type = bool;
+            using first_argument_type = value_type;
+            using second_argument_type = value_type;
+            bool operator ()(const value_type& x, const value_type& y) const{
+                return comp(x.first, y.first);
+            }
+        };
+
+        explicit vector_map(
+            const key_compare &comp = key_compare(),
+            const allocator_type &alloc = allocator_type()
+        ) : comp(comp), vec(alloc){}
+
+        explicit vector_map(const allocator_type &alloc) : comp(), vec(alloc){}
+
+        template<class InputIterator>
+        vector_map(
+            InputIterator first, InputIterator last,
+            const key_compare &comp = key_compare(),
+            const allocator_type &alloc = allocator_type()
+        ) : comp(comp), vec(first, last, alloc)
+        { std::sort(vec.begin(), vec.end(), comp); }
+
+        vector_map(vector_map &&other)
+            : comp(std::move(other.comp)), vec(std::move(other.vec))
+        {}
+
+        vector_map(vector_map &&other, const allocator_type &alloc)
+            : comp(std::move(otehr.comp)), vec(std::move(otehr.vec), alloc)
+        {}
+
+        vector_map(
+            std::initializer_list<value_type> list,
+            const key_compare &comp = key_compare(),
+            const allocator_type &alloc = allocator_type()
+        ) : comp(comp), vec(list, alloc)
+        { std::sort(vec.begin(), vec.end(), comp); }
+
+        vector_map &operator =(const vector_map &other){
+            comp = other.comp;
+            vec = other.vec;
+        }
+
+        vector_map &operator =(vector_map &&other){
+            comp = std::move(other.comp);
+            vec = std::move(other.vec);
+        }
+
+        vector_map &operator =(std::initializer_list<value_type> list){
+            vec = list;
+        }
+
+        iterator begin(){
+            return vec.begin();
+        }
+
+        iterator end(){
+            return vec.end();
+        }
+
+        iterator begin() const{
+            return vec.begin();
+        }
+
+        iterator end() const{
+            return vec.end();
+        }
+
+        iterator rbegin(){
+            return vec.rbegin();
+        }
+
+        iterator rend(){
+            return vec.rend();
+        }
+
+        iterator rbegin() const{
+            return vec.rbegin();
+        }
+
+        iterator rend() const{
+            return vec.rend();
+        }
+
+        iterator cbegin() const{
+            return vec.cbegin();
+        }
+
+        iterator cend() const{
+            return vec.cend();
+        }
+
+        iterator crbegin() const{
+            return vec.crbegin();
+        }
+
+        iterator crend() const{
+            return vec.crend();
+        }
+
+        bool empty() const{
+            return vec.empty();
+        }
+
+        bool size() const{
+            return vec.size();
+        }
+
+        bool max_size() const{
+            return vec.max_size();
+        }
+
+        value_type &operator [](const key_type &key){
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            auto iter = std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == key){
+                return *iter;
+            }else{
+                return vec.end();
+            }
+        }
+
+        const value_type &operator [](const key_type &key) const{
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            auto iter = std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == key){
+                return *iter;
+            }else{
+                return vec.end();
+            }
+        }
+
+        value_type &at(const key_type &key){
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            auto iter = std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == key){
+                return *iter;
+            }else{
+                throw std::out_of_range("vector_map: throw out_of_range;");
+            }
+        }
+
+        const value_type &at(const key_type &key) const{
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            auto iter = std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == key){
+                return *iter;
+            }else{
+                throw std::out_of_range("vector_map: throw out_of_range;");
+            }
+        }
+
+        std::pair<iterator, bool> insert(const value_type &value){
+            iterator iter = std::lower_bound(
+                vec.begin(), vec.end(), value,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == key){
+                return std::make_pair(iter, false);
+            }else{
+                iter = vec.insert(iter, std::make_pair<key_type, mapped_type>(value.first, value.second));
+                return std::make_pair(iter, true);
+            }
+        }
+
+        std::pair<iterator, bool> insert(value_type &&value){
+            iterator iter = std::lower_bound(
+                vec.begin(), vec.end(), value,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == value.first){
+                return std::make_pair(iter, false);
+            }else{
+                iter = vec.insert(iter, std::make_pair(std::move(value.first), std::move(value.second)));
+                return std::make_pair(iter, true);
+            }
+        }
+
+        iterator insert(const_iterator position, value_type &value){
+            return vec.insert(position, value);
+        }
+
+        template<class Pair>
+        iterator insert(const_iterator position, Pair &&value){
+            return vec.insert(position, value);
+        }
+
+        template<class InputIter>
+        void insert(InputIter first, InputIter last){
+            vec.insert(first, last);
+            std::sort(
+                vec.begin(), vec.end(),
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+        }
+
+        void insert(std::initializer_list<value_type> list){
+            vec.insert(list);
+            std::sort(
+                vec.begin(), vec.end(),
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+        }
+
+        iterator erase(const_iterator position){
+            return vec.erase(position);
+        }
+
+        iterator erase(const_iterator first, const_iterator last){
+            return vec.erase(first, last);
+        }
+
+        size_type erase(const key_type &key){
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            iterator iter = std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == key.first){
+                vec.erase(iter);
+                return 1;
+            }else{
+                return 0;
+            }
+        }
+
+        void swap(vector_map &other){
+            std::swap(comp, other.comp);
+            vec.swap(other.vec);
+        }
+
+        void clear() noexcept{
+            vec.clear();
+        }
+
+        std::pair<iterator, bool> emplace(key_type &&key, mapped_type &&mapped){
+            std::pair<key_type, mapped_type> v = { key, mapped };
+            iterator iter = std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == value.first){
+                return std::make_pair(iter, false);
+            }else{
+                iter = vec.insert(iter, v);
+                return std::make_pair(iter, true);
+            }
+        }
+
+        std::pair<iterator, bool> emplace(const_iterator hint, key_type &&key, mapped_type &&mapped){
+            std::pair<key_type, mapped_type> v = { key, mapped };
+            if(hint == end()){
+                --hint;
+            }
+            if(comp(*hint, v)){
+                return insert(v);
+            }else if(!comp(v, *hint)){
+                return std::make_pair(hint, false);
+            }else{
+                iterator iter = vec.insert(hint, v);
+                return std::make_pair(iter, true);
+            }
+        }
+
+        key_compare key_comp() const{
+            return key_compare();
+        }
+
+        value_compare value_comp() const{
+            return value_compare(comp);
+        }
+
+        iterator find(const key_type &key){
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            iterator iter = std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == key){
+                return iter;
+            }else{
+                return vec.end();
+            }
+        }
+
+        const_iterator find(const key_type &key) const{
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            const_iterator iter = std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == key){
+                return iter;
+            }else{
+                return vec.end();
+            }
+        }
+
+        size_type count(const key_type &key) const{
+            if(find(key) != end()){
+                return 1;
+            }else{
+                return 0;
+            }
+        }
+
+        iterator lower_bound(const key_type &key){
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            return std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+        }
+
+        const_iterator lower_bound(const key_type &key) const{
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            return std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+        }
+
+        iterator upper_bound(const key_type &key){
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            return std::upper_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+        }
+
+        const_iterator upper_bound(const key_type &key) const{
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            return std::upper_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+        }
+
+        std::pair<iterator, iterator> equal_range(const key_type &key){
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            iterator iter = std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == key){
+                std::make_pair(iter, iter);
+            }
+        }
+
+        std::pair<const_iterator, const_iterator> equal_range(const key_type &key) const{
+            std::pair<key_type, mapped_type> v;
+            v.first = key;
+            const_iterator iter = std::lower_bound(
+                vec.begin(), vec.end(), v,
+                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                    return comp(a.first, b.first);
+                }
+            );
+            if(iter != vec.end() && iter->first == key){
+                std::make_pair(iter, iter);
+            }
+        }
+
+    private:
+        key_compare comp;
+        std::vector<std::pair<key_type, mapped_type>> vec;
+    };
+
+    template<class T>
+    static T pow(T a, int n){
+        if(n == 0){
+            return T(1);
+        }
+        bool positive = n > 0;
+        if(!positive){
+            n = -n;
+        }
+        T r = T(1);
+        for(; n; n >>= 1, a *= a){
+            if(n & 1){
+                r *= a;
+            }
+        }
+        if(positive){
+            return std::move(r);
+        }else{
+            return 1 / r;
+        }
+    }
+
     struct parsing_semantic_data;
-
-    template<class Degree, class Coefficient>
-    poly<Degree, Coefficient> parse(const std::string &str);
+    poly parse(const std::string &str);
 }
 
-template<class DegreeType, class CoeffidientType>
 class poly{
-    friend aux_poly::parsing_semantic_data<DegreeType, CoeffidientType>;
+    friend aux::parsing_semantic_data;
 
 public:
-    // 次数の型
-    using degree_type = DegreeType;
+    using degree_type = int;
 
     // 係数の型
-    using coefficient_type = CoeffidientType;
+    using coefficient_type = mpq_class;
 
     // 項の型
     class term_type{
@@ -292,17 +769,6 @@ public:
         return std::make_tuple(Q, R);
     }
 
-    static std::tuple<poly, poly> euclidean_div_int(const poly &A, const poly &B){
-        poly Q = 0, R = A;
-        degree_type delta;
-        while(R.is_not_zero() && (delta = R.deg() - B.deg()) >= 0){
-            poly T(delta, coe_to_int(R.lc()) / coe_to_int(B.lc()));
-            Q += T;
-            R -= B * T;
-        }
-        return std::make_tuple(Q, R);
-    }
-
     static std::tuple<poly, poly> psude_div(const poly &A, const poly &B){
         poly b = B.lc();
         degree_type N = A.deg() - B.deg() + 1;
@@ -318,7 +784,7 @@ public:
         return std::make_tuple(bN * Q, bN * R);
     }
 
-    static std::tuple<poly, poly> div(const poly &A, const poly &B){
+    static std::tuple<poly, poly> quo_rem(const poly &A, const poly &B){
         return euclidean_div(A, B);
     }
 
@@ -390,7 +856,7 @@ public:
         }
         bool all_int = true;
         for(const term_type &t : data){
-            if(t.coe.denominator() != 1){
+            if(t.coe.get_den() != 1){
                 all_int = false;
                 break;
             }
@@ -402,16 +868,16 @@ public:
             }
             return b;
         }else{
-            int n = std::abs(data[0].coe.numerator()), d = std::abs(data[0].coe.denominator());
+            mpz_class n = abs(data[0].coe.get_num()), d = abs(data[0].coe.get_den());
             for(std::size_t i = 1; i < data.size(); ++i){
-                if(!(data[i].coe.numerator() % n == 0 && data[i].coe.denominator() % d == 0)){
+                if(!(data[i].coe.get_num() % n == 0 && data[i].coe.get_den() % d == 0)){
                     bool divid = false;
-                    if(n % data[i].coe.numerator() == 0){
-                        n = std::abs(data[i].coe.numerator());
+                    if(n % data[i].coe.get_num() == 0){
+                        n = abs(data[i].coe.get_num());
                         divid = true;
                     }
-                    if(d % data[i].coe.denominator() == 0){
-                        d = std::abs(data[i].coe.denominator());
+                    if(d % data[i].coe.get_den() == 0){
+                        d = abs(data[i].coe.get_den());
                         divid = true;
                     }
                     if(!divid){
@@ -489,7 +955,7 @@ public:
     static std::tuple<poly, poly> half_extended_euclidean(poly a, poly b){
         poly a1 = 1, b1 = 0;
         while(b.is_not_zero()){
-            auto qr = div(a, b);
+            auto qr = quo_rem(a, b);
             a = b;
             b = std::get<1>(qr);
             poly r1 = a1 - std::get<0>(qr) * b1;
@@ -501,7 +967,7 @@ public:
 
     static std::tuple<poly, poly, poly> half_full_extended_euclidean(const poly &a, const poly &b){
         auto sg = half_extended_euclidean(a, b);
-        auto tr = div(std::get<1>(sg) - std::get<0>(sg) * a, b);
+        auto tr = quo_rem(std::get<1>(sg) - std::get<0>(sg) * a, b);
         return std::make_tuple(std::get<0>(sg), std::get<0>(tr), std::get<1>(sg));
     }
 
@@ -514,14 +980,14 @@ public:
     static std::tuple<poly, poly> extended_euclidean(const poly &a, const poly &b, const poly &c){
         poly s, t, g, q, r;
         std::tie(s, t, g) = half_full_extended_euclidean(a, b);
-        std::tie(q, r) = div(c, g);
+        std::tie(q, r) = quo_rem(c, g);
         if(r.is_not_zero()){
             throw extended_euclidean_exception("c is not in the ideal generated by a and b.");
         }
         s = q * s;
         t = q * t;
         if(s.is_not_zero() && s.deg() >= b.deg()){
-            std::tie(q, r) = div(s, b);
+            std::tie(q, r) = quo_rem(s, b);
             s = r;
             t = t + q * a;
         }
@@ -531,13 +997,13 @@ public:
     static poly half_extended_euclidean(const poly &a, const poly &b, const poly &c){
         poly s, g, q, r;
         std::tie(s, g) = half_extended_euclidean(a, b);
-        std::tie(q, r) = div(c, g);
+        std::tie(q, r) = quo_rem(c, g);
         if(r.is_not_zero()){
             throw extended_euclidean_exception("c is not in the ideal generated by a and b.");
         }
         s = q * s;
         if(s.is_not_zero() && s.deg() >= b.deg()){
-            std::tie(q, r) = div(s, b);
+            std::tie(q, r) = quo_rem(s, b);
             s = r;
         }
         return s;
@@ -545,7 +1011,7 @@ public:
 
     static std::tuple<poly, poly> half_full_extended_euclidean(const poly &a, const poly &b, const poly &c){
         poly s = half_extended_euclidean(a, b, c), t, r;
-        std::tie(t, r) = div(c - s * a, b);
+        std::tie(t, r) = quo_rem(c - s * a, b);
         return std::make_tuple(s, t);
     }
 
@@ -563,7 +1029,7 @@ public:
             d_prod2 *= d[i];
         }
         d_prod = d_prod2 * d[0];
-        std::tie(a0, r) = div(a, d_prod);
+        std::tie(a0, r) = quo_rem(a, d_prod);
         if(n == 1){
             result = { a0, r };
             return result;
@@ -589,7 +1055,7 @@ public:
         for(std::size_t i = 0; i < an.size(); ++i){
             for(degree_type j = e[i]; j > 0; --j){
                 poly q, aij;
-                std::tie(q, aij) = div(an[i], d[i]);
+                std::tie(q, aij) = quo_rem(an[i], d[i]);
                 an[i] = q;
                 result.push_back(std::move(aij));
             }
@@ -615,9 +1081,9 @@ public:
             r.push_back(R[i].lc());
             poly Quo, Rem;
             std::tie(Quo, Rem) = psude_div(R[i - 1], R[i]);
-            R.push_back(std::get<0>(div(Rem, poly(β[i]))));
+            R.push_back(std::get<0>(quo_rem(Rem, poly(β[i]))));
             ++i;
-            γ.push_back(pow(-γ[i - 1], δ[i - 1]) * pow(γ[i - 1], 1 - δ[i - 1]));
+            γ.push_back(aux::pow(coefficient_type(-γ[i - 1]), δ[i - 1]) * aux::pow(γ[i - 1], 1 - δ[i - 1]));
             δ.push_back(R[i - 1].deg() - R[i].deg());
             β.push_back(-r[i - 1] * pow(γ[i], δ[i]));
         }
@@ -634,23 +1100,23 @@ public:
             if(odd(R[j - 1].deg()) && odd(R[j])){
                 s = -s;
             }
-            c = c * pow(std::get<0>(div(β[j], pow(r[j], 1 + δ[j]))), R[j].deg()) * pow(r[j], R[j - 1].deg() - R[j + 1].deg());
+            c = c * aux::pow(coefficient_type(β[j] / pow(r[j], 1 + δ[j])), R[j].deg()) * aux::pow(r[j], R[j - 1].deg() - R[j + 1].deg());
         }
         return std::make_tuple(poly(s) * poly(c) * pow(R[k], R[k - 1].deg()), std::move(R));
     }
 
     static std::vector<poly> squarefree_musser(const poly &A){
         coefficient_type c = A.content();
-        poly S = std::get<0>(div(A, poly(c)));
+        poly S = std::get<0>(quo_rem(A, poly(c)));
         poly S_minus = gcd(S, S.diff());
-        poly S_star = std::get<0>(div(S, S_minus));
+        poly S_star = std::get<0>(quo_rem(S, S_minus));
         std::size_t k = 0;
         std::vector<poly> Ak;
         while(S_minus.deg() > 0){
             poly Y = gcd(S_star, S_minus);
-            Ak.push_back(std::get<0>(div(S_star, Y)));
+            Ak.push_back(std::get<0>(quo_rem(S_star, Y)));
             S_star = Y;
-            S_minus = std::get<0>(div(S_minus, Y));
+            S_minus = std::get<0>(quo_rem(S_minus, Y));
             ++k;
         }
         Ak.push_back(S_star);
@@ -660,18 +1126,18 @@ public:
 
     static std::vector<poly> squarefree_yun(const poly &A){
         coefficient_type c = A.content();
-        poly S = std::get<0>(div(A, poly(c)));
+        poly S = std::get<0>(quo_rem(A, poly(c)));
         poly S_prime = S.diff();
         poly S_minus = gcd(S, S_prime);
-        poly S_star = std::get<0>(div(S, S_minus));
-        poly Y = std::get<0>(div(S_prime, S_minus));
+        poly S_star = std::get<0>(quo_rem(S, S_minus));
+        poly Y = std::get<0>(quo_rem(S_prime, S_minus));
         std::size_t k = 0;
         poly Z;
         std::vector<poly> Ak;
         while((Z = Y - S_star.diff()).is_not_zero()){
             Ak.push_back(gcd(S_star, Z));
-            S_star = std::get<0>(div(S_star, Ak[k]));
-            Y = std::get<0>(div(Z, Ak[k]));
+            S_star = std::get<0>(quo_rem(S_star, Ak[k]));
+            Y = std::get<0>(quo_rem(Z, Ak[k]));
             ++k;
         }
         Ak.push_back(S_star);
@@ -683,21 +1149,38 @@ public:
         return squarefree_musser(A);
     }
 
-    //static std::tuple<poly, poly> hermite_reduce(poly A, const poly &D){
-    //    poly g;
-    //    poly D_minus = gcd(D, D.diff());
-    //    poly D_star = D / D_minus;
-    //    while(D_minus.deg() > 0){
-    //        poly D_minus2 = gcd(D_minus, D_minus.diff());
-    //        poly D_minus_star = D_minus / D_minus2;
-    //        poly B, C;
-    //        std::tie(B, C) = extended_euclidean(-D_star * D_minus.diff() / D_minus, D_minus_star, A);
-    //        A = C - B.diff() * D_star / D_minus_star;
-    //        g = g + B / D_minus;
-    //        D_minus = D_minus2;
-    //    }
-    //    return std::make_tuple(g, std::get<0>(div(A, D_star)));
-    //}
+    static std::pair<
+        aux::vector_map<int, poly>,
+        aux::vector_map<poly, int>
+    > squarefree_factor_list(const poly &A){
+        coefficient_type c = A.content();
+        poly S = std::get<0>(quo_rem(A, poly(c)));
+        poly S_minus = gcd(S, S.diff());
+        poly S_star = std::get<0>(quo_rem(S, S_minus));
+        int k = 0;
+        aux::vector_map<int, poly> Ak;
+        aux::vector_map<poly, int> inverseAk;
+        while(S_minus.deg() > 0){
+            poly Y = gcd(S_star, S_minus);
+            poly An = std::get<0>(quo_rem(S_star, Y));
+            if(An != poly(1)){
+                Ak.insert(std::make_pair(k + 1, An));
+            }
+            S_star = Y;
+            S_minus = std::get<0>(quo_rem(S_minus, Y));
+            ++k;
+        }
+        if(S_star != poly(1)){
+            Ak.insert(std::make_pair(k + 1, S_star));
+        }
+        auto iter = Ak.find(1);
+        if(iter == Ak.end()){
+            Ak.insert(std::make_pair(1, poly(c) * S_minus));
+        }else{
+            iter->second *= poly(c) * S_minus;
+        }
+        return std::move(Ak);
+    }
 
     template<class T>
     static T abs(const T &a){
@@ -706,24 +1189,7 @@ public:
 
     template<class T>
     static T pow(T a, degree_type n){
-        if(n == 0){
-            return T(1);
-        }
-        bool positive = n > 0;
-        if(!positive){
-            n = -n;
-        }
-        T r = T(1);
-        for(; n; n >>= 1, a *= a){
-            if(n & 1){
-                r *= a;
-            }
-        }
-        if(positive){
-            return std::move(r);
-        }else{
-            return 1 / r;
-        }
+        aux::pow<T>(a, n);
     }
 
     template<>
@@ -749,8 +1215,8 @@ public:
     }
 
     static int gcd(int a, int b){
-        a = std::abs(a);
-        b = std::abs(b);
+        a = abs(a);
+        b = abs(b);
         if(a < b){
             std::swap(a, b);
         }
@@ -780,12 +1246,12 @@ public:
     };
 
     static int coe_to_int(const coefficient_type &coe){
-        int n = coe.numerator();
-        int d = coe.denominator();
+        mpz_class n = coe.get_num();
+        mpz_class d = coe.get_den();
         if(d != 1){
             throw coe_to_int_exception();
         }
-        return n;
+        return static_cast<int>(n.get_si());
     }
 
     template<class T>
@@ -810,7 +1276,7 @@ public:
 
 public:
     static poly parse(const std::string &str){
-        return aux_poly::parse<DegreeType, CoeffidientType>(str);
+        return aux::parse(str);
     }
 
     class parsing_error : public std::runtime_error{
@@ -821,9 +1287,9 @@ public:
     };
 };
 
-namespace aux_poly{
+namespace aux{
     enum class token_id : int{
-        div = 3,
+        quo_rem = 3,
         add = 4,
         sub = 5,
         pow = 2,
@@ -980,7 +1446,7 @@ namespace aux_poly{
                 t.line_num = line_num;
                 t.char_num = char_num;
                 t.word_num = word_num++;
-                t.identifier = token_type::identifier_type::div;
+                t.identifier = token_type::identifier_type::quo_rem;
                 result.push_back(std::move(t));
                 goto end_of_tokenize;
             }
@@ -991,7 +1457,7 @@ namespace aux_poly{
                 t.line_num = line_num;
                 t.char_num = char_num;
                 t.word_num = word_num++;
-                t.identifier = token_type::identifier_type::div;
+                t.identifier = token_type::identifier_type::quo_rem;
                 result.push_back(std::move(t));
                 first = iter;
                 goto state_1;
@@ -1095,12 +1561,11 @@ namespace aux_poly{
         }
     };
 
-    template<class Degree, class Coefficient>
     struct parsing_semantic_data : public semantic_data{
         parsing_semantic_data() = default;
         parsing_semantic_data(const parsing_semantic_data &other) : p(other.p){}
-        parsing_semantic_data(const poly<Degree, Coefficient> &p) : p(p){}
-        poly<Degree, Coefficient> p;
+        parsing_semantic_data(const poly &p) : p(p){}
+        poly p;
 
         template<class Iter>
         semantic_data *make_value(Iter first, Iter last){
@@ -1110,15 +1575,15 @@ namespace aux_poly{
                 coe *= 10;
                 coe += i - '0';
             }
-            return new parsing_semantic_data(poly<Degree, Coefficient>(0, coe));
+            return new parsing_semantic_data(poly(0, coe));
         }
     };
 
     template<class Lexer>
     class parser{
     public:
-        template<class Degree, class Coefficient, class Iter>
-        static void parse(poly<Degree, Coefficient> &poly, Iter iter, Iter end){
+        template<class Iter>
+        static void parse(poly &poly, Iter iter, Iter end){
             bool first_term = true;
             do{
                 iter = term(poly, iter, first_term);
@@ -1126,8 +1591,8 @@ namespace aux_poly{
             }while(iter->identifier != token_id::end);
         }
 
-        template<class Degree, class Coefficient, class Iter>
-        static Iter term(poly<Degree, Coefficient> &p, Iter iter, bool first_term){
+        template<class Iter>
+        static Iter term(poly &p, Iter iter, bool first_term){
             bool positive = true;
             if(iter->identifier == token_id::add){
                 positive = true;
@@ -1147,7 +1612,7 @@ namespace aux_poly{
             if(iter->identifier == token_id::value){
                 num = make_str(iter->first, iter->last);
                 ++iter;
-                if(iter->identifier == token_id::div){
+                if(iter->identifier == token_id::quo_rem){
                     ++iter;
                     if(iter->identifier == token_id::value){
                         den = make_str(iter->first, iter->last);
@@ -1172,10 +1637,9 @@ namespace aux_poly{
                     exponent = "1";
                 }
             }
-            poly<Degree, Coefficient> q(
-                Degree(std::atol(exponent.c_str())),
-                Coefficient(std::atol(num.c_str())) / Coefficient(std::atol(den.c_str()))
-            );
+            poly q(
+                std::atol(exponent.c_str()),
+                poly::coefficient_type(std::atol(num.c_str())) / poly::coefficient_type(std::atol(den.c_str())));
             if(positive){
                 p += q;
             }else{
@@ -1185,42 +1649,37 @@ namespace aux_poly{
         }
     };
 
-    template<class Degree, class Coefficient>
-    poly<Degree, Coefficient> parse(const std::string &str){
+    poly parse(const std::string &str){
         try{
-            parsing_semantic_data<Degree, Coefficient> sa;
+            parsing_semantic_data sa;
             using lexer = poly_lexer<std::string::const_iterator>;
             std::vector<lexer::token_type> result = lexer::tokenize(str.begin(), str.end(), sa);
-            poly<Degree, Coefficient> poly_data;
+            poly poly_data;
             parser<lexer>::parse(poly_data, result.begin(), result.end());
             return poly_data;
         }catch(...){
-            throw poly<Degree, Coefficient>::parsing_error();
+            throw poly::parsing_error();
         }
     }
 }
 
-template<class Degree, class Coefficient>
-poly<Degree, Coefficient> operator +(const poly<Degree, Coefficient> &lhs, const poly<Degree, Coefficient> &rhs){
-    poly<Degree, Coefficient> r = lhs;
+poly operator +(const poly &lhs, const poly &rhs){
+    poly r = lhs;
     r += rhs;
     return r;
 }
 
-template<class Degree, class Coefficient>
-poly<Degree, Coefficient> operator -(const poly<Degree, Coefficient> &lhs, const poly<Degree, Coefficient> &rhs){
-    poly<Degree, Coefficient> r = lhs;
+poly operator -(const poly &lhs, const poly &rhs){
+    poly r = lhs;
     r -= rhs;
     return r;
 }
 
-template<class Degree, class Coefficient>
-poly<Degree, Coefficient> operator *(const poly<Degree, Coefficient> &lhs, const poly<Degree, Coefficient> &rhs){
-    return poly<Degree, Coefficient>::mul(lhs, rhs);
+poly operator *(const poly &lhs, const poly &rhs){
+    return poly::mul(lhs, rhs);
 }
 
-template<class Degree, class Coefficient>
-std::ostream &operator <<(std::ostream &os, const poly<Degree, Coefficient> &p){
+std::ostream &operator <<(std::ostream &os, const poly &p){
     bool first = true;
     for(auto iter = p.rbegin(); iter != p.rend(); ++iter){
         auto &i(*iter);
@@ -1235,28 +1694,9 @@ std::ostream &operator <<(std::ostream &os, const poly<Degree, Coefficient> &p){
                 os << " - ";
             }
         }
-        std::stringstream ss;
-        ss << (i.coe > 0 ? i.coe : -i.coe);
-        std::string coe_str = ss.str();
-        std::string num_str, den_str;
-        auto jter = coe_str.begin();
-        while(jter != coe_str.end() && *jter != '/'){
-            num_str += *jter;
-            ++jter;
-        }
-        if(num_str == "0"){
-            den_str = "1";
-        }else{
-            if(jter != coe_str.end()){
-                ++jter;
-                while(jter != coe_str.end()){
-                    den_str += *jter;
-                    ++jter;
-                }
-            }
-        }
+        std::string num_str = std::to_string(i.coe.get_num().get_si()), den_str = std::to_string(i.coe.get_den().get_si());
         if(den_str == "1"){
-            if(num_str == "1"){
+            if(num_str == "1" || num_str == "-1"){
                 if(i.deg == 0){
                     os << num_str;
                 }
@@ -1267,7 +1707,7 @@ std::ostream &operator <<(std::ostream &os, const poly<Degree, Coefficient> &p){
             os << (i.coe > 0 ? i.coe : -i.coe);
         }
         if(i.deg > 0){
-            if(poly<Degree, Coefficient>::abs(i.coe) != 1){
+            if(poly::abs(i.coe) != 1){
                 os << " ";
             }
             os << "x";
@@ -1283,6 +1723,353 @@ std::ostream &operator <<(std::ostream &os, const poly<Degree, Coefficient> &p){
     }
     return os;
 }
+
+//class polyfrac{
+//private:
+//    using factor_list_type = std::map<int, poly>;
+//
+//public:
+//    polyfrac() : num({ {1, 0} }), den({ {1, 1} }){}
+//    polyfrac(const polyfrac &other)
+//        : num(other.num), den(other.den)
+//    {}
+//    
+//    polyfrac(polyfrac &&other)
+//        : num(std::move(other.num)), den(std::move(other.den))
+//    {}
+//
+//    polyfrac(int n) : num({ {1, n} }), den({ {1, 1} }){}
+//    polyfrac(const poly &p) : num({ {1, p} }), den({ {1, 1} }){}
+//    
+//    polyfrac(const poly &p, const poly &q)
+//        : num(), den()
+//    {
+//        auto fp = poly::squarefree_factor_list(p);
+//        auto fq = poly::squarefree_factor_list(q);
+//    }
+//
+//    static poly expand(const factor_list_type &factor_list){
+//        poly r = 1;
+//        for(auto &i : factor_list){
+//            r *= poly::pow(i.second, i.first);
+//        }
+//        return std::move(r);
+//    }
+//
+//    factor_list_type num, den;
+//};
+
+namespace aux{
+    using type_info = int;
+    template<class Dummy>
+    class type_info_factory_template{
+    public:
+        template<class T>
+        static type_info get(){
+            static type_info storage = get2();
+            return storage;
+        }
+
+    private:
+        static type_info get2(){
+            static type_info val = 0;
+            return val++;
+        }
+    };
+
+    using type_info_factory = type_info_factory_template<void>;
+}
+
+// 初等関数内で発生する全般的な例外クラス．
+class elementary_function_exception : public std::runtime_error{
+public:
+    elementary_function_exception() = delete;
+    elementary_function_exception(const elementary_function_exception&) = default;
+    elementary_function_exception(const char *message) : std::runtime_error(message){}
+};
+
+// 初等関数．
+class elementary_function{
+public:
+    virtual mpf_class approx(std::size_t prec = 64) = 0;
+    virtual std::unique_ptr<elementary_function> clone() const = 0;
+    virtual bool equal(const elementary_function&) = 0;
+    virtual aux::type_info type() const = 0;
+    virtual std::string to_string() const = 0;
+
+    // -------- utility --------
+    static mpf_class &ln2(){
+        static mpf_class storage;
+        return storage;
+    }
+
+    static mpf_class &sqrt2(){
+        static mpf_class storage;
+        return storage;
+    }
+
+    static mp_bitcnt_t &current_mp_bitcnt_ln2(){
+        static mp_bitcnt_t storage;
+        return storage;
+    }
+
+    static void calc_ln2(mp_bitcnt_t prec){
+        if(prec == current_mp_bitcnt_ln2()){
+            return;
+        }
+        ln2().set_prec(prec);
+        sqrt2().set_prec(prec);
+        current_mp_bitcnt_ln2() = prec;
+        ln2() = 0;
+        mpf_class u, u_;
+        u.set_prec(current_mp_bitcnt_ln2()), u_.set_prec(current_mp_bitcnt_ln2());
+        u = u_ = mpf_class(1) / mpf_class(3);
+        int i = 1;
+        for(mp_bitcnt_t c = 0; c < current_mp_bitcnt_ln2() / 3 + 1; ++c){
+            ln2() += 2 * u / i;
+            for(int j = 0; j < 2; ++j){
+                u *= u_;
+            }
+            i += 2;
+        }
+        sqrt2() = 2;
+        sqrt2() = sqrt(sqrt2());
+    }
+};
+
+// 値．
+class direct_value : public elementary_function{
+private:
+    mpf_class data;
+    direct_value(const direct_value &other) : data(other.data){}
+
+public:
+    direct_value(double a) : data(a){}
+    direct_value(const mpf_class &a) : data(a){}
+    direct_value(mpf_class &&a) : data(std::move(a)){}
+
+    mpf_class approx(std::size_t prec = 64) override{
+        mpf_class r;
+        r = data;
+        r.set_prec(prec);
+        return r;
+    }
+
+    std::unique_ptr<elementary_function> clone() const override{
+        return std::unique_ptr<elementary_function>(new direct_value(*this));
+    }
+
+    bool equal(const elementary_function &other) override{
+        return type() == other.type() && data == static_cast<const direct_value&>(other).data;
+    }
+
+    aux::type_info type() const override{
+        return aux::type_info_factory::get<decltype(*this)>();
+    }
+
+    std::string to_string() const override{
+        std::stringstream ss;
+        ss << data;
+        return ss.str();
+    }
+};
+
+// 加算．
+#define define_operator(name, op) \
+    class name : public elementary_function{ \
+    private: \
+        std::unique_ptr<elementary_function> lhs, rhs; \
+        mutable bool approxed = false; \
+        mutable mpf_class value_; \
+        name( \
+            const elementary_function &lhs, \
+            const elementary_function &rhs \
+        ) : lhs(lhs.clone()), rhs(rhs.clone()){} \
+    public: \
+        name(double a, double b) : lhs(new direct_value(a)), rhs(new direct_value(b)){} \
+        name(const mpf_class &a, const mpf_class &b) : lhs(new direct_value(a)), rhs(new direct_value(b)){} \
+        mpf_class approx(std::size_t prec = 64) override{ \
+            if(!approxed){ \
+                mpf_class r = lhs->approx(prec), s = rhs->approx(prec); \
+                value_ = r op s; \
+                approxed = true; \
+                return value_; \
+            }else{ \
+                return value_; \
+            } \
+        } \
+        std::unique_ptr<elementary_function> clone() const override{ \
+            return std::unique_ptr<elementary_function>(new name(*lhs, *rhs)); \
+        } \
+        bool equal(const elementary_function &other) override{ \
+            return \
+                type() == other.type() \
+                && lhs->equal(*static_cast<const name&>(other).lhs) \
+                && rhs->equal(*static_cast<const name&>(other).rhs); \
+        } \
+        std::string to_string() const override{ \
+            return lhs->to_string() + " " + #op + " " + rhs->to_string(); \
+        } \
+        aux::type_info type() const override{ \
+            return aux::type_info_factory::get<decltype(*this)>(); \
+        } \
+    }
+
+define_operator(add, +);
+define_operator(sub, -);
+define_operator(mul, *);
+define_operator(div, /);
+
+#undef define_operator
+
+// 対数関数の引数が不正．
+class log_exception : public elementary_function_exception{
+public:
+    log_exception() : elementary_function_exception("log_x y: y is invalid argument."){}
+    log_exception(const log_exception&) = default;
+};
+
+// 対数関数．
+class ln : public elementary_function{
+private:
+    ln(const ln &other) : argument(nullptr){
+        argument = std::move(argument->clone());
+    }
+
+public:
+    ln() = delete;
+    ln(const elementary_function &argument) : argument(argument.clone()){}
+    ln(std::unique_ptr<elementary_function> argument) : argument(std::move(argument)){}
+
+    mpf_class approx(std::size_t prec = 64) override{
+        if(!approxed){
+            mpf_class x = argument->approx(prec);
+            if(x <= 0){
+                throw log_exception();
+            }
+            bool inverse = x < 1;
+            if(inverse){
+                x = 1 / x;
+            }
+            mp_bitcnt_t prec_bit = x.get_prec();
+            calc_ln2(prec_bit);
+            mpf_class s;
+            s.set_prec(x.get_prec());
+            int k = mpf_class(x / sqrt2()).r2_exp();
+            {
+                mpz_class k_ = 1;
+                k_ <<= k;
+                x /= k_;
+            }
+            x -= 1;
+            mp_bitcnt_t n = (prec_bit / 32 + 1) * 5;
+            for(mp_bitcnt_t i = n; i >= 1; --i){
+                s = i * x / (2 + i * x / (2 * i + 1 + s));
+            }
+            if(inverse){
+                value_ = -(ln2() * k + x / (1 + s));
+            }else{
+                value_ = ln2() * k + x / (1 + s);
+            }
+            approxed = true;
+        }
+        return value_;
+    }
+
+    std::unique_ptr<elementary_function> clone() const override{
+        return std::unique_ptr<elementary_function>(new ln(*this));
+    }
+
+    bool equal(const elementary_function &other) override{
+        return other.type() == type() && argument->equal(*static_cast<const ln&>(other).argument);
+    }
+
+    aux::type_info type() const override{
+        return aux::type_info_factory::get<decltype(*this)>();
+    }
+
+    std::string to_string() const override{
+        return "ln(" + argument->to_string() + ")";
+    }
+
+private:
+    std::unique_ptr<elementary_function> argument;
+    mutable bool approxed = false;
+    mutable mpf_class value_;
+};
+
+// 指数関数．
+class exp : public elementary_function{
+private:
+    exp(const exp &other) : argument(nullptr){
+        argument = std::move(argument->clone());
+    }
+
+public:
+    exp() = delete;
+    exp(const elementary_function &argument) : argument(argument.clone()){}
+    exp(std::unique_ptr<elementary_function> argument) : argument(std::move(argument)){}
+
+    mpf_class approx(std::size_t prec = 64) override{
+        if(!approxed){
+            mpf_class x = argument->approx(prec);
+            if(x == 0){ return mpf_class(1); }
+            bool inverse = x < 0;
+            if(inverse){
+                x = -x;
+            }
+            mp_bitcnt_t prec_bit = x.get_prec(), n = (prec_bit / 128 + 1) * 50;
+            calc_ln2(prec_bit);
+            mpz_class k;
+            mpf_class x2, w, tmp, half;
+            x2.set_prec(prec_bit), w.set_prec(prec_bit), tmp.set_prec(prec_bit), half.set_prec(prec_bit);
+            k = x / ln2() + (x >= 0 ? 0.5 : -0.5);
+            x -= k * ln2();
+            x2 = x * x;
+            w = x2 / n;
+            for(mp_bitcnt_t i = n - 4; i >= 6; i -= 4){
+                w = x2 / (w + i);
+            }
+            tmp = (2 + w + x) / (2 + w - x);
+            mp_bitcnt_t
+                l = mpz_class(k / (sizeof(mp_bitcnt_t) * 8)).get_ui(),
+                m = mpz_class(k % (sizeof(mp_bitcnt_t) * 8)).get_ui();
+            if(l != 0 || m != 0){
+                tmp.dexp(static_cast<mp_exp_t>(l), static_cast<mp_exp_t>(m));
+                value_ = inverse ? 1 / tmp : tmp;
+            }else{
+                value_ = 1 / tmp;
+            }
+            approxed = true;
+        }
+        return value_;
+    }
+
+    virtual std::unique_ptr<elementary_function> clone() const override{
+        return std::unique_ptr<elementary_function>(new exp(*this));
+    }
+
+    bool equal(const elementary_function &other) override{
+        return other.type() == type() && argument->equal(*static_cast<const exp&>(other).argument);
+    }
+
+    aux::type_info type() const override{
+        return aux::type_info_factory::get<decltype(*this)>();
+    }
+
+    std::string to_string() const override{
+        return "exp(" + argument->to_string() + ")";
+    }
+
+private:
+    std::unique_ptr<elementary_function> argument;
+    mutable bool approxed = false;
+    mutable mpf_class value_;
+};
+
+}
+
+//-------- include end --------//
 
 template<class Container>
 Container standard_suffle(Container c){
@@ -1300,39 +2087,25 @@ Container standard_suffle(Container c){
 
 #include <cmath>
 
+void elementary_function_test(){
+    symbolic_alg::direct_value v(50);
+    symbolic_alg::exp e(v);
+    std::cout << e.approx(64).get_str() << std::endl;
+
+    symbolic_alg::ln ln(v);
+    std::cout << ln.approx(64).get_str() << std::endl;
+}
+
+void squarefree_test(){
+    using namespace symbolic_alg;
+    auto result = poly::squarefree_factor_list(poly::parse("x^5 - x^3 - x^2 + 1"));
+    for(auto &i : result){
+        std::cout << i.first << " : " << i.second << std::endl;
+    }
+}
+
 int main(){
-    using rational = boost::rational<int>;
-    using p = poly<int, rational>;
-    //{
-    //    std::cout << "Hermite Reduce\n";
-    //    auto r = p::hermite_reduce(p::parse("x^7 - 24x^4 - 4x^2 + 8x - 8"), p::parse("x^8 + 6x^6 + 12x^4 + 8x^2"));
-    //    std::cout << std::get<0>(r) << std::endl;
-    //    std::cout << std::get<1>(r) << std::endl;
-    //}
-
-    {
-        std::cout << "Squarefree Musser's algorithm\n";
-        auto r = p::squarefree_musser(p::parse("x^8 + 6x^6 + 12x^4 + 8x^2"));
-        for(auto &&i : r){
-            std::cout << i << "\n";
-        }
-    }
-
-    {
-        std::cout << "Squarefree Yun's algorithm\n";
-        auto r = p::squarefree_yun(p::parse("x^8 + 6x^6 + 12x^4 + 8x^2"));
-        for(auto &&i : r){
-            std::cout << i << "\n";
-        }
-    }
-
-    {
-        std::cout << "Squarefree test" << std::endl;
-        auto r = p::squarefree(p::parse("x^5 - x^3 - x^2 + 1"));
-        for(auto &&i : r){
-            std::cout << i << "\n";
-        }
-    }
+    squarefree_test();
 
     return 0;
 }
