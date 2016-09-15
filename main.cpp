@@ -799,6 +799,18 @@ public:
         return euclidean_div(A, B);
     }
 
+    static poly quo(const poly &A, const poly &B){
+        return std::get<0>(euclidean_div(A, B));
+    }
+
+    static poly div(const poly &A, const poly &B){
+        auto p = euclidean_div(A, B);
+        if(std::get<1>(p) != 0){
+            throw;
+        }
+        return std::get<0>(p);
+    }
+
     poly &operator *=(const poly &other){
         *this = mul(*this, other);
         return *this;
@@ -1159,29 +1171,30 @@ public:
         poly S_minus = gcd(S, S.diff());
         poly S_star = std::get<0>(quo_rem(S, S_minus));
         int k = 0;
-        aux::vector_map<int, poly> Ak;
         aux::vector_map<poly, int> inverseAk;
         while(S_minus.deg() > 0){
             poly Y = gcd(S_star, S_minus);
             poly An = std::get<0>(quo_rem(S_star, Y));
             if(An != poly(1)){
-                Ak.insert(std::make_pair(k + 1, An));
+                auto p = inverseAk.insert(std::make_pair(An, k + 1));
             }
             S_star = Y;
             S_minus = std::get<0>(quo_rem(S_minus, Y));
             ++k;
         }
         if(S_star != poly(1)){
-            Ak.insert(std::make_pair(k + 1, S_star));
+            auto p = inverseAk.insert(std::make_pair(S_star, k + 1));
         }
-        auto iter = Ak.find(1);
-        if(iter == Ak.end()){
-            iter = Ak.insert(std::make_pair(1, poly(c) * S_minus)).first;
-        }else{
-            iter->second *= poly(c) * S_minus;
+        bool find_one = false;
+        for(std::pair<poly, int> &i : inverseAk){
+            if(i.second == 1){
+                i.first *= poly(c) * S_minus;
+                find_one = true;
+                break;
+            }
         }
-        for(auto &i : Ak){
-            inverseAk.insert(std::make_pair(i.second, i.first));
+        if(!find_one){
+            inverseAk.insert(std::make_pair(poly(c) * S_minus, 1));
         }
         return std::move(inverseAk);
     }
@@ -1749,6 +1762,12 @@ private:
     using factor_list_type = aux::vector_map<poly, int>;
 
 public:
+    class transrate_poly_exception : public std::runtime_error{
+    public:
+        transrate_poly_exception() : std::runtime_error("denominator != 1"){}
+        transrate_poly_exception(const transrate_poly_exception&) = default;
+    };
+
     polyfrac() : num({ { poly(1), 0 } }), den({ { poly(1), 1 } }){}
     polyfrac(const polyfrac &other)
         : num(other.num), den(other.den)
@@ -1845,6 +1864,18 @@ public:
         return *this;
     }
 
+    polyfrac &operator =(const polyfrac &other){
+        num = other.num;
+        den = other.den;
+        return *this;
+    }
+
+    polyfrac &operator =(polyfrac &&other){
+        num = std::move(other.num);
+        den = std::move(other.den);
+        return *this;
+    }
+
     bool is_zero() const{
         return num.begin()->first.is_zero();
     }
@@ -1911,6 +1942,13 @@ public:
         }
     }
 
+    const poly to_poly() const{
+        if(expand(den) != 1){
+            throw transrate_poly_exception();
+        }
+        return expand(num);
+    }
+
     const factor_list_type &get_num() const{
         return num;
     }
@@ -1963,6 +2001,69 @@ std::ostream &operator <<(std::ostream &os, const polyfrac &p){
         os << " / " << polyfrac::expand(p.get_den());
     }
     return os;
+}
+
+std::tuple<polyfrac, polyfrac> hermite_reduce_original(const poly &A, const poly &D){
+    std::vector<poly> Dn = poly::squarefree(D);
+    std::vector<poly> P_An;
+    {
+        std::vector<poly> Dp = Dn;
+        for(int i = 0; i < Dp.size(); ++i){
+            Dp[i] = poly::pow(Dp[i], i + 1);
+        }
+        P_An = poly::partial_fraction(A, Dp);
+    }
+    poly &P = P_An[0];
+    polyfrac g = 0;
+    polyfrac h = P + P_An[1] / Dn[0];
+    for(int k = 2; k - 1 < Dn.size() && Dn[k - 1].deg() > 0; ++k){
+        poly V = Dn[k - 1];
+        for(int j = k - 1; j >= 1; --j){
+            poly B, C;
+            std::tie(B, C) = poly::extended_euclidean(V.diff(), V, -poly::div(P_An[k], poly(j)));
+            g = g + B / poly::pow(V, j);
+            P_An[k] = -j * C - B.diff();
+        }
+        h = h + P_An[k] / V;
+    }
+    return std::make_tuple(g, h);
+}
+
+std::tuple<polyfrac, polyfrac> hermite_reduce_quadratic(poly A, poly D){
+    polyfrac g = 0;
+    std::vector<poly> Dn = poly::squarefree(D);
+    for(int i = 2; i - 1 < Dn.size() && Dn[i - 1].deg() > 0; ++i){
+        poly V = Dn[i - 1];
+        poly U = poly::div(D, poly::pow(V, i));
+        for(int j = i - 1; j >= 1; --j){
+            poly B, C;
+            std::tie(B, C) = poly::extended_euclidean(U * V.diff(), V, -poly::div(A, poly(j)));
+            g = g + B / poly::pow(V, j);
+            A = -j * C - U * B.diff();
+        }
+        D = U * V;
+    }
+    return std::make_tuple(g, A / D);
+}
+
+std::tuple<polyfrac, polyfrac> hermite_reduce_liner(poly A, poly D){
+    polyfrac g = 0;
+    poly Dminus = poly::gcd(D, D.diff());
+    poly Dstar = poly::div(D, Dminus);
+    while(Dminus.deg() > 0){
+        poly Dminus2 = poly::gcd(Dminus, Dminus.diff());
+        poly Dminus_star = poly::div(Dminus, Dminus2);
+        poly B, C;
+        std::tie(B, C) = poly::extended_euclidean(poly::div(-Dstar * Dminus.diff(), Dminus), Dminus_star, A);
+        A = C - poly::div(B.diff() * Dstar, Dminus_star);
+        g = g + B / Dminus;
+        Dminus = Dminus2;
+    }
+    return std::make_tuple(g, A / Dstar);
+}
+
+std::tuple<polyfrac, polyfrac> hermite_reduce(const poly &A, const poly &D){
+    return hermite_reduce_liner(A, D);
 }
 
 namespace aux{
@@ -2080,20 +2181,36 @@ public:
     }
 };
 
-// 加算．
+// 除数が0．
+class divide_by_zero_exception : public elementary_function_exception{
+public:
+    divide_by_zero_exception() : elementary_function_exception("divide by zero exception."){}
+    divide_by_zero_exception(const divide_by_zero_exception&) = default;
+};
+
+// 四則演算の定義．
 #define define_operator(name, op) \
     class name : public elementary_function{ \
     private: \
         std::unique_ptr<elementary_function> lhs, rhs; \
         mutable bool approxed = false; \
         mutable mpf_class value_; \
+        void check_divide_by_zero(){ \
+            if(std::string(#name) == std::string("div") && rhs == 0){ \
+                throw divide_by_zero_exception(); \
+            } \
+        }\
         name( \
             const elementary_function &lhs, \
             const elementary_function &rhs \
-        ) : lhs(lhs.clone()), rhs(rhs.clone()){} \
+        ) : lhs(lhs.clone()), rhs(rhs.clone()){ check_divide_by_zero(); } \
     public: \
-        name(double a, double b) : lhs(new direct_value(a)), rhs(new direct_value(b)){} \
-        name(const mpf_class &a, const mpf_class &b) : lhs(new direct_value(a)), rhs(new direct_value(b)){} \
+        name(double a, double b) : lhs(new direct_value(a)), rhs(new direct_value(b)){ \
+            check_divide_by_zero(); \
+        } \
+        name(const mpf_class &a, const mpf_class &b) : lhs(new direct_value(a)), rhs(new direct_value(b)){ \
+            check_divide_by_zero(); \
+        } \
         mpf_class approx(std::size_t prec = 64) override{ \
             if(!approxed){ \
                 mpf_class r = lhs->approx(prec), s = rhs->approx(prec); \
@@ -2304,8 +2421,7 @@ void elementary_function_test(){
 
 void squarefree_test(){
     using namespace symbolic_alg;
-    //auto result = poly::squarefree_factor_list(poly::parse("x^5 - x^3 - x^2 + 1"));
-    auto result = poly::squarefree_factor_list(poly::parse("-x^4 - x^3 + x + 1"));
+    auto result = poly::squarefree_factor_list(poly::parse("x^5 - x^3 - x^2 + 1"));
     for(auto &i : result){
         std::cout << i.first << " : " << i.second << std::endl;
     }
@@ -2319,7 +2435,31 @@ void polyfrac_test(){
     std::cout << pf << std::endl;
 }
 
+void hermite_reduce_test(){
+    using namespace symbolic_alg;
+    {
+        std::cout << "Hermite Reduce (original version)." << std::endl;
+        auto p = hermite_reduce_original(poly::parse("x^7 - 24x^4 - 4x^2 + 8x - 8"), poly::parse("x^8 + 6x^6 + 12x^4 + 8x^2"));
+        std::cout << std::get<0>(p) << std::endl;
+        std::cout << std::get<1>(p) << std::endl << std::endl;
+    }
+
+    {
+        std::cout << "Hermite Reduce (quadratic version)." << std::endl;
+        auto p = hermite_reduce_quadratic(poly::parse("x^7 - 24x^4 - 4x^2 + 8x - 8"), poly::parse("x^8 + 6x^6 + 12x^4 + 8x^2"));
+        std::cout << std::get<0>(p) << std::endl;
+        std::cout << std::get<1>(p) << std::endl << std::endl;
+    }
+
+    {
+        std::cout << "Hermite Reduce (liner version)." << std::endl;
+        auto p = hermite_reduce_liner(poly::parse("x^7 - 24x^4 - 4x^2 + 8x - 8"), poly::parse("x^8 + 6x^6 + 12x^4 + 8x^2"));
+        std::cout << std::get<0>(p) << std::endl;
+        std::cout << std::get<1>(p) << std::endl << std::endl;
+    }
+}
+
 int main(){
-    polyfrac_test();
+    hermite_reduce_test();
     return 0;
 }
