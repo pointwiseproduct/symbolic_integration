@@ -24,13 +24,13 @@ namespace aux{
         class Key,
         class Mapped,
         class Compare = std::less<Key>,
-        class Alloc = std::allocator<std::pair<const Key, Mapped>>
+        class Alloc = std::allocator<std::pair<Key, Mapped>>
     > class vector_map{
     public:
         using key_type = Key;
         using mapped_type = Mapped;
         using key_compare = Compare;
-        using value_type = std::pair<const key_type, mapped_type>;
+        using value_type = std::pair<key_type, mapped_type>;
         using container_type = std::vector<std::pair<key_type, mapped_type>>;
         using allocator_type = Alloc;
         using reference = value_type&;
@@ -72,6 +72,10 @@ namespace aux{
         ) : comp(comp), vec(first, last, alloc)
         { std::sort(vec.begin(), vec.end(), comp); }
 
+        vector_map(const vector_map &other)
+            : comp(other.comp), vec(other.vec)
+        {}
+
         vector_map(vector_map &&other)
             : comp(std::move(other.comp)), vec(std::move(other.vec))
         {}
@@ -85,20 +89,23 @@ namespace aux{
             const key_compare &comp = key_compare(),
             const allocator_type &alloc = allocator_type()
         ) : comp(comp), vec(list, alloc)
-        { std::sort(vec.begin(), vec.end(), comp); }
+        { std::sort(vec.begin(), vec.end(), [&](const value_type &a, const value_type &b){ return comp(a.first, b.first); }); }
 
         vector_map &operator =(const vector_map &other){
             comp = other.comp;
             vec = other.vec;
+            return *this;
         }
 
         vector_map &operator =(vector_map &&other){
             comp = std::move(other.comp);
             vec = std::move(other.vec);
+            return *this;
         }
 
         vector_map &operator =(std::initializer_list<value_type> list){
             vec = list;
+            return *this;
         }
 
         iterator begin(){
@@ -109,11 +116,11 @@ namespace aux{
             return vec.end();
         }
 
-        iterator begin() const{
+        const_iterator begin() const{
             return vec.begin();
         }
 
-        iterator end() const{
+        const_iterator end() const{
             return vec.end();
         }
 
@@ -125,27 +132,27 @@ namespace aux{
             return vec.rend();
         }
 
-        iterator rbegin() const{
+        const_iterator rbegin() const{
             return vec.rbegin();
         }
 
-        iterator rend() const{
+        const_iterator rend() const{
             return vec.rend();
         }
 
-        iterator cbegin() const{
+        const_iterator cbegin() const{
             return vec.cbegin();
         }
 
-        iterator cend() const{
+        const_iterator cend() const{
             return vec.cend();
         }
 
-        iterator crbegin() const{
+        const_iterator crbegin() const{
             return vec.crbegin();
         }
 
-        iterator crend() const{
+        const_iterator crend() const{
             return vec.crend();
         }
 
@@ -153,7 +160,7 @@ namespace aux{
             return vec.empty();
         }
 
-        bool size() const{
+        size_type size() const{
             return vec.size();
         }
 
@@ -166,7 +173,7 @@ namespace aux{
             v.first = key;
             auto iter = std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -182,7 +189,7 @@ namespace aux{
             v.first = key;
             auto iter = std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -198,7 +205,7 @@ namespace aux{
             v.first = key;
             auto iter = std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -214,7 +221,7 @@ namespace aux{
             v.first = key;
             auto iter = std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -228,7 +235,7 @@ namespace aux{
         std::pair<iterator, bool> insert(const value_type &value){
             iterator iter = std::lower_bound(
                 vec.begin(), vec.end(), value,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -243,7 +250,7 @@ namespace aux{
         std::pair<iterator, bool> insert(value_type &&value){
             iterator iter = std::lower_bound(
                 vec.begin(), vec.end(), value,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -255,21 +262,20 @@ namespace aux{
             }
         }
 
-        iterator insert(const_iterator position, value_type &value){
+        iterator insert(const_iterator position, const value_type &value){
             return vec.insert(position, value);
         }
 
-        template<class Pair>
-        iterator insert(const_iterator position, Pair &&value){
+        iterator insert(const_iterator position, value_type &&value){
             return vec.insert(position, value);
         }
 
         template<class InputIter>
         void insert(InputIter first, InputIter last){
-            vec.insert(first, last);
+            vec.insert(vec.end(), first, last);
             std::sort(
                 vec.begin(), vec.end(),
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -279,7 +285,7 @@ namespace aux{
             vec.insert(list);
             std::sort(
                 vec.begin(), vec.end(),
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -298,11 +304,11 @@ namespace aux{
             v.first = key;
             iterator iter = std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
-            if(iter != vec.end() && iter->first == key.first){
+            if(iter != vec.end() && iter->first == key){
                 vec.erase(iter);
                 return 1;
             }else{
@@ -323,7 +329,7 @@ namespace aux{
             std::pair<key_type, mapped_type> v = { key, mapped };
             iterator iter = std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -363,7 +369,7 @@ namespace aux{
             v.first = key;
             iterator iter = std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -379,7 +385,7 @@ namespace aux{
             v.first = key;
             const_iterator iter = std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -403,7 +409,7 @@ namespace aux{
             v.first = key;
             return std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -414,7 +420,7 @@ namespace aux{
             v.first = key;
             return std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -425,7 +431,7 @@ namespace aux{
             v.first = key;
             return std::upper_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -436,7 +442,7 @@ namespace aux{
             v.first = key;
             return std::upper_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -447,7 +453,7 @@ namespace aux{
             v.first = key;
             iterator iter = std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -461,7 +467,7 @@ namespace aux{
             v.first = key;
             const_iterator iter = std::lower_bound(
                 vec.begin(), vec.end(), v,
-                [&](const std::pair<key_type, mapped_type> &a, const std::pair<key_type, mapped_type> &b){
+                [&](const value_type &a, const value_type &b){
                     return comp(a.first, b.first);
                 }
             );
@@ -495,6 +501,11 @@ namespace aux{
         }else{
             return 1 / r;
         }
+    }
+
+    template<class T>
+    static T abs(const T &a){
+        return a < 0 ? -a : a;
     }
 
     struct parsing_semantic_data;
@@ -830,14 +841,7 @@ public:
     }
 
     bool operator ==(const poly &other) const{
-        for(const term_type &i : data){
-            for(const term_type &j : other.data){
-                if(i.deg != j.deg || i.coe != j.coe){
-                    return false;
-                }
-            }
-        }
-        return true;
+        return lexicographical_compare(*this, other) == 0;
     }
 
     bool operator !=(const poly &other) const{
@@ -1149,10 +1153,7 @@ public:
         return squarefree_musser(A);
     }
 
-    static std::pair<
-        aux::vector_map<int, poly>,
-        aux::vector_map<poly, int>
-    > squarefree_factor_list(const poly &A){
+    static aux::vector_map<poly, int> squarefree_factor_list(const poly &A){
         coefficient_type c = A.content();
         poly S = std::get<0>(quo_rem(A, poly(c)));
         poly S_minus = gcd(S, S.diff());
@@ -1175,16 +1176,19 @@ public:
         }
         auto iter = Ak.find(1);
         if(iter == Ak.end()){
-            Ak.insert(std::make_pair(1, poly(c) * S_minus));
+            iter = Ak.insert(std::make_pair(1, poly(c) * S_minus)).first;
         }else{
             iter->second *= poly(c) * S_minus;
         }
-        return std::move(Ak);
+        for(auto &i : Ak){
+            inverseAk.insert(std::make_pair(i.second, i.first));
+        }
+        return std::move(inverseAk);
     }
 
     template<class T>
     static T abs(const T &a){
-        return a < 0 ? -a : a;
+        return aux::abs(a);
     }
 
     template<class T>
@@ -1679,6 +1683,10 @@ poly operator *(const poly &lhs, const poly &rhs){
     return poly::mul(lhs, rhs);
 }
 
+bool operator <(const poly &a, const poly &b){
+    return poly::lexicographical_compare(a, b) < 0;
+}
+
 std::ostream &operator <<(std::ostream &os, const poly &p){
     bool first = true;
     for(auto iter = p.rbegin(); iter != p.rend(); ++iter){
@@ -1694,7 +1702,9 @@ std::ostream &operator <<(std::ostream &os, const poly &p){
                 os << " - ";
             }
         }
-        std::string num_str = std::to_string(i.coe.get_num().get_si()), den_str = std::to_string(i.coe.get_den().get_si());
+        std::string
+            num_str = std::to_string(mpz_class(abs(i.coe.get_num())).get_si()),
+            den_str = std::to_string(mpz_class(abs(i.coe.get_den())).get_si());
         if(den_str == "1"){
             if(num_str == "1" || num_str == "-1"){
                 if(i.deg == 0){
@@ -1724,40 +1734,236 @@ std::ostream &operator <<(std::ostream &os, const poly &p){
     return os;
 }
 
-//class polyfrac{
-//private:
-//    using factor_list_type = std::map<int, poly>;
-//
-//public:
-//    polyfrac() : num({ {1, 0} }), den({ {1, 1} }){}
-//    polyfrac(const polyfrac &other)
-//        : num(other.num), den(other.den)
-//    {}
-//    
-//    polyfrac(polyfrac &&other)
-//        : num(std::move(other.num)), den(std::move(other.den))
-//    {}
-//
-//    polyfrac(int n) : num({ {1, n} }), den({ {1, 1} }){}
-//    polyfrac(const poly &p) : num({ {1, p} }), den({ {1, 1} }){}
-//    
-//    polyfrac(const poly &p, const poly &q)
-//        : num(), den()
-//    {
-//        auto fp = poly::squarefree_factor_list(p);
-//        auto fq = poly::squarefree_factor_list(q);
-//    }
-//
-//    static poly expand(const factor_list_type &factor_list){
-//        poly r = 1;
-//        for(auto &i : factor_list){
-//            r *= poly::pow(i.second, i.first);
-//        }
-//        return std::move(r);
-//    }
-//
-//    factor_list_type num, den;
-//};
+class polyfrac;
+polyfrac operator +(const poly&, const polyfrac&);
+polyfrac operator -(const poly&, const polyfrac&);
+polyfrac operator *(const poly&, const polyfrac&);
+polyfrac operator /(const poly&, const polyfrac&);
+polyfrac operator /(const poly&, const poly&);
+std::ostream &operator <<(std::ostream&, const polyfrac&);
+
+class polyfrac{
+    friend std::ostream &operator <<(std::ostream&, const polyfrac&);
+
+private:
+    using factor_list_type = aux::vector_map<poly, int>;
+
+public:
+    polyfrac() : num({ { poly(1), 0 } }), den({ { poly(1), 1 } }){}
+    polyfrac(const polyfrac &other)
+        : num(other.num), den(other.den)
+    {}
+    
+    polyfrac(polyfrac &&other)
+        : num(std::move(other.num)), den(std::move(other.den))
+    {}
+
+    polyfrac(int n) : num({ { poly(n), 1 } }), den({ { poly(1), 1 } }){}
+    polyfrac(const poly &p)
+        : num(), den()
+    { std::tie(num, den) = reduce(p, poly(1)); }
+    
+    polyfrac(const poly &p, const poly &q)
+        : num(), den()
+    { std::tie(num, den) = reduce(p, q); }
+
+    polyfrac operator +(const polyfrac &rhs){
+        polyfrac r = *this;
+        r += rhs;
+        return r;
+    }
+
+    polyfrac operator -(const polyfrac &rhs){
+        polyfrac r = *this;
+        r -= rhs;
+        return r;
+    }
+
+    polyfrac operator *(const polyfrac &rhs){
+        polyfrac r = *this;
+        r *= rhs;
+        return r;
+    }
+
+    polyfrac operator /(const polyfrac &rhs){
+        polyfrac r = *this;
+        r /= rhs;
+        return r;
+    }
+
+    polyfrac &operator +=(const polyfrac &rhs){
+        std::tie(num, den) = reduce(
+            expand(num) * expand(rhs.den) + expand(rhs.num) * expand(den),
+            expand(den) * expand(rhs.den)
+        );
+        return *this;
+    }
+
+    polyfrac &operator -=(const polyfrac &rhs){
+        std::tie(num, den) = reduce(
+            expand(num) * expand(rhs.den) - expand(rhs.num) * expand(den),
+            expand(den) * expand(rhs.den)
+        );
+        return *this;
+    }
+
+    polyfrac &operator *=(const polyfrac &rhs){
+        coefficient_mul(num, rhs.num.begin(), rhs.num.end());
+        coefficient_mul(den, rhs.den.begin(), rhs.den.end());
+        std::tie(num, den) = reduce(expand(num), expand(den));
+        return *this;
+    }
+
+    polyfrac &operator /=(const polyfrac &rhs){
+        coefficient_mul(num, rhs.den.begin(), rhs.den.end());
+        coefficient_mul(den, rhs.num.begin(), rhs.num.end());
+        std::tie(num, den) = reduce(expand(num), expand(den));
+        return *this;
+    }
+
+    polyfrac &operator +=(const poly &rhs){
+        std::tie(num, den) = reduce(expand(num) + rhs * expand(den), expand(den));
+        return *this;
+    }
+
+    polyfrac &operator -=(const poly &rhs){
+        std::tie(num, den) = reduce(expand(num) - rhs * expand(den), expand(den));
+        return *this;
+    }
+
+    polyfrac &operator *=(const poly &rhs){
+        factor_list_type f = poly::squarefree_factor_list(rhs);
+        num.insert(f.begin(), f.end());
+        std::tie(num, den) = reduce(expand(num), expand(den));
+        return *this;
+    }
+
+    polyfrac &operator /=(const poly &rhs){
+        factor_list_type f = poly::squarefree_factor_list(rhs);
+        den.insert(f.begin(), f.end());
+        std::tie(num, den) = reduce(expand(num), expand(den));
+        return *this;
+    }
+
+    bool is_zero() const{
+        return num.begin()->first.is_zero();
+    }
+
+    bool is_not_zero() const{
+        return !is_zero();
+    }
+
+    static std::tuple<factor_list_type, factor_list_type> reduce(const poly &p, const poly &q){
+        return reduce(poly::squarefree_factor_list(p), poly::squarefree_factor_list(q));
+    }
+
+    static std::tuple<factor_list_type, factor_list_type> reduce(factor_list_type fp, factor_list_type fq){
+        do{
+            bool continue_flag = false;
+            for(auto i = fp.begin(); i != fp.end(); ++i){
+                auto j = fq.find(i->first);
+                if(j != fq.end()){
+                    if(j->second <= i->second){
+                        i->second -= j->second;
+                        fq.erase(j);
+                        if(i->second == 0){
+                            fp.erase(i);
+                        }
+                    }else if(i->second < j->second){
+                        j->second -= i->second;
+                        fp.erase(i);
+                    }
+                    continue_flag = true;
+                }
+                if(continue_flag){
+                    break;
+                }
+            }
+            if(continue_flag){
+                continue;
+            }
+        }while(false);
+        if(fq.empty()){
+            fq = factor_list_type({ { 1, 1 } });
+        }
+        return std::make_tuple(std::move(fp), std::move(fq));
+    }
+
+    static poly expand(const factor_list_type &factor_list){
+        poly r = 1;
+        for(auto &i : factor_list){
+            r *= poly::pow(i.first, i.second);
+        }
+        return std::move(r);
+    }
+
+    static void coefficient_mul(
+        factor_list_type &a,
+        factor_list_type::const_iterator first, factor_list_type::const_iterator last
+    ){
+        for(; first != last; ++first){
+            auto iter = a.find(first->first);
+            if(iter != a.end()){
+                iter->second += first->second;
+            }else{
+                a.insert(iter, *first);
+            }
+        }
+    }
+
+    const factor_list_type &get_num() const{
+        return num;
+    }
+
+    const factor_list_type &get_den() const{
+        return den;
+    }
+
+    bool operator ==(const polyfrac &other) const{
+        return expand(num) == expand(other.num) && expand(den) == expand(other.den);
+    }
+
+    bool operator !=(const polyfrac &other) const{
+        return !(*this == other);
+    }
+
+private:
+    factor_list_type num, den;
+};
+
+polyfrac operator +(const poly &a, const polyfrac &B){
+    polyfrac A = a;
+    return A + B;
+}
+
+polyfrac operator -(const poly &a, const polyfrac &B){
+    polyfrac A = a;
+    return A - B;
+}
+
+polyfrac operator *(const poly &a, const polyfrac &B){
+    polyfrac A = a;
+    return A * B;
+}
+
+polyfrac operator /(const poly &a, const polyfrac &B){
+    polyfrac A = a;
+    return A / B;
+}
+
+polyfrac operator /(const poly &a, const poly &b){
+    polyfrac A = a, B = b;
+    return A / B;
+}
+
+std::ostream &operator <<(std::ostream &os, const polyfrac &p){
+    os << polyfrac::expand(p.get_num());
+    const polyfrac::factor_list_type &fl = p.get_den();
+    if(!(fl.size() == 1 && fl.begin()->first == 1)){
+        os << " / " << polyfrac::expand(p.get_den());
+    }
+    return os;
+}
 
 namespace aux{
     using type_info = int;
@@ -2098,14 +2304,22 @@ void elementary_function_test(){
 
 void squarefree_test(){
     using namespace symbolic_alg;
-    auto result = poly::squarefree_factor_list(poly::parse("x^5 - x^3 - x^2 + 1"));
+    //auto result = poly::squarefree_factor_list(poly::parse("x^5 - x^3 - x^2 + 1"));
+    auto result = poly::squarefree_factor_list(poly::parse("-x^4 - x^3 + x + 1"));
     for(auto &i : result){
         std::cout << i.first << " : " << i.second << std::endl;
     }
 }
 
-int main(){
-    squarefree_test();
+void polyfrac_test(){
+    using namespace symbolic_alg;
+    polyfrac pf = poly::parse("x^5 - x^3 - x^2 + 1") / poly::parse("x^3 + 2x^2 + 2x + 1") / poly::parse("-x + 1");
+    std::cout << pf << std::endl;
+    pf *= poly::parse("x^3 + 2x^2 + 2x + 1") * poly::parse("-x + 1");
+    std::cout << pf << std::endl;
+}
 
+int main(){
+    polyfrac_test();
     return 0;
 }
