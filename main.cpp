@@ -20,6 +20,17 @@ poly operator -(const poly&, const poly&);
 poly operator *(const poly&, const poly&);
 
 namespace aux{
+    template<class T>
+    struct rebind_1st;
+
+    template<class P, template<class> class T>
+    struct rebind_1st<T<P>>{
+        template<class U>
+        struct rebind{
+            using type = T<U>;
+        };
+    };
+
     template<
         class Key,
         class Mapped,
@@ -239,10 +250,10 @@ namespace aux{
                     return comp(a.first, b.first);
                 }
             );
-            if(iter != vec.end() && iter->first == key){
+            if(iter != vec.end() && iter->first == value.first){
                 return std::make_pair(iter, false);
             }else{
-                iter = vec.insert(iter, std::make_pair<key_type, mapped_type>(value.first, value.second));
+                iter = vec.insert(iter, value);
                 return std::make_pair(iter, true);
             }
         }
@@ -257,7 +268,7 @@ namespace aux{
             if(iter != vec.end() && iter->first == value.first){
                 return std::make_pair(iter, false);
             }else{
-                iter = vec.insert(iter, std::make_pair(std::move(value.first), std::move(value.second)));
+                iter = vec.insert(iter, value);
                 return std::make_pair(iter, true);
             }
         }
@@ -474,6 +485,75 @@ namespace aux{
             if(iter != vec.end() && iter->first == key){
                 std::make_pair(iter, iter);
             }
+        }
+
+        static int lexicographical_key_type_compare(const vector_map &lhs, const vector_map &rhs){
+            auto iter = lhs.begin();
+            auto jter = rhs.begin();
+            while(iter != lhs.end() && jter != rhs.end()){
+                if(lhs.comp(iter->first, jter->first)){
+                    return -1;
+                }else if(!lhs.comp(iter->first, jter->first) && !lhs.comp(jter->first, iter->first)){
+                    ++iter, ++jter;
+                    continue;
+                }else{
+                    return +1;
+                }
+            }
+            if(iter == lhs.end() && jter != rhs.end()){
+                return -1;
+            }else if(iter != lhs.end() && jter == rhs.end()){
+                return +1;
+            }else{
+                return lexicographical_mapped_type_compare(lhs, rhs);
+            }
+        }
+
+        static int lexicographical_mapped_type_compare(const vector_map &lhs, const vector_map &rhs){
+            using comparetor = typename rebind_1st<key_compare>::rebind<mapped_type>::type;
+            auto iter = lhs.begin();
+            auto jter = rhs.begin();
+            while(iter != lhs.end() && jter != rhs.end()){
+                if(comparetor()(iter->second, jter->second)){
+                    return -1;
+                }else if(!comparetor()(iter->second, jter->second) && !comparetor()(jter->second, iter->second)){
+                    ++iter, ++jter;
+                    continue;
+                }else{
+                    return +1;
+                }
+            }
+            if(iter == lhs.end() && jter != rhs.end()){
+                return -1;
+            }else if(iter != lhs.end() && jter == rhs.end()){
+                return +1;
+            }else{
+                return 0;
+            }
+        }
+
+        bool operator ==(const vector_map &rhs) const{
+            return lexicographical_key_type_compare(*this, rhs) == 0;
+        }
+
+        bool operator !=(const vector_map &rhs) const{
+            return !(*this == rhs);
+        }
+
+        bool operator <(const vector_map &rhs) const{
+            return lexicographical_key_type_compare(*this, rhs) < 0;
+        }
+
+        bool operator <=(const vector_map &rhs) const{
+            return lexicographical_key_type_compare(*this, rhs) <= 0;
+        }
+
+        bool operator >(const vector_map &rhs) const{
+            return lexicographical_key_type_compare(*this, rhs) > 0;
+        }
+
+        bool operator >=(const vector_map &rhs) const{
+            return lexicographical_key_type_compare(*this, rhs) >= 0;
         }
 
     private:
@@ -1332,15 +1412,11 @@ namespace aux{
             token_type(token_type &&other) :
                 first(std::move(other.first)),
                 last(std::move(other.last)),
-                line_num(other.line_num),
-                char_num(other.char_num),
-                word_num(other.word_num),
                 identifier(other.identifier)
             {}
 
             ~token_type() = default;
             iterator first, last;
-            std::size_t line_num, char_num, word_num;
             identifier_type identifier;
         };
 
@@ -1410,9 +1486,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::add;
                 result.push_back(std::move(t));
                 goto end_of_tokenize;
@@ -1421,9 +1494,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::add;
                 result.push_back(std::move(t));
                 first = iter;
@@ -1435,9 +1505,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::sub;
                 result.push_back(std::move(t));
                 goto end_of_tokenize;
@@ -1446,9 +1513,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::sub;
                 result.push_back(std::move(t));
                 first = iter;
@@ -1460,9 +1524,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::quo_rem;
                 result.push_back(std::move(t));
                 goto end_of_tokenize;
@@ -1471,9 +1532,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::quo_rem;
                 result.push_back(std::move(t));
                 first = iter;
@@ -1485,9 +1543,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::value;
                 result.push_back(std::move(t));
                 goto end_of_tokenize;
@@ -1504,9 +1559,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::value;
                 result.push_back(std::move(t));
                 first = iter;
@@ -1518,9 +1570,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::pow;
                 result.push_back(std::move(t));
                 goto end_of_tokenize;
@@ -1529,9 +1578,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::pow;
                 result.push_back(std::move(t));
                 first = iter;
@@ -1543,9 +1589,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::x;
                 result.push_back(std::move(t));
                 goto end_of_tokenize;
@@ -1554,9 +1597,6 @@ namespace aux{
                 token_type t;
                 t.first = first;
                 t.last = iter;
-                t.line_num = line_num;
-                t.char_num = char_num;
-                t.word_num = word_num++;
                 t.identifier = token_type::identifier_type::x;
                 result.push_back(std::move(t));
                 first = iter;
@@ -1568,9 +1608,6 @@ namespace aux{
                 token_type t;
                 t.first = iter;
                 t.last = iter;
-                t.line_num = 0;
-                t.char_num = 0;
-                t.word_num = 0;
                 t.identifier = token_type::identifier_type::end;
                 result.push_back(std::move(t));
             }
@@ -1747,16 +1784,16 @@ std::ostream &operator <<(std::ostream &os, const poly &p){
     return os;
 }
 
-class polyfrac;
-polyfrac operator +(const poly&, const polyfrac&);
-polyfrac operator -(const poly&, const polyfrac&);
-polyfrac operator *(const poly&, const polyfrac&);
-polyfrac operator /(const poly&, const polyfrac&);
-polyfrac operator /(const poly&, const poly&);
-std::ostream &operator <<(std::ostream&, const polyfrac&);
+class poly_frac;
+poly_frac operator +(const poly&, const poly_frac&);
+poly_frac operator -(const poly&, const poly_frac&);
+poly_frac operator *(const poly&, const poly_frac&);
+poly_frac operator /(const poly&, const poly_frac&);
+poly_frac operator /(const poly&, const poly&);
+std::ostream &operator <<(std::ostream&, const poly_frac&);
 
-class polyfrac{
-    friend std::ostream &operator <<(std::ostream&, const polyfrac&);
+class poly_frac{
+    friend std::ostream &operator <<(std::ostream&, const poly_frac&);
 
 private:
     using factor_list_type = aux::vector_map<poly, int>;
@@ -1768,49 +1805,49 @@ public:
         transrate_poly_exception(const transrate_poly_exception&) = default;
     };
 
-    polyfrac() : num({ { poly(1), 0 } }), den({ { poly(1), 1 } }){}
-    polyfrac(const polyfrac &other)
+    poly_frac() : num({ { poly(1), 0 } }), den({ { poly(1), 1 } }){}
+    poly_frac(const poly_frac &other)
         : num(other.num), den(other.den)
     {}
     
-    polyfrac(polyfrac &&other)
+    poly_frac(poly_frac &&other)
         : num(std::move(other.num)), den(std::move(other.den))
     {}
 
-    polyfrac(int n) : num({ { poly(n), 1 } }), den({ { poly(1), 1 } }){}
-    polyfrac(const poly &p)
+    poly_frac(int n) : num({ { poly(n), 1 } }), den({ { poly(1), 1 } }){}
+    poly_frac(const poly &p)
         : num(), den()
     { std::tie(num, den) = reduce(p, poly(1)); }
     
-    polyfrac(const poly &p, const poly &q)
+    poly_frac(const poly &p, const poly &q)
         : num(), den()
     { std::tie(num, den) = reduce(p, q); }
 
-    polyfrac operator +(const polyfrac &rhs){
-        polyfrac r = *this;
+    poly_frac operator +(const poly_frac &rhs){
+        poly_frac r = *this;
         r += rhs;
         return r;
     }
 
-    polyfrac operator -(const polyfrac &rhs){
-        polyfrac r = *this;
+    poly_frac operator -(const poly_frac &rhs){
+        poly_frac r = *this;
         r -= rhs;
         return r;
     }
 
-    polyfrac operator *(const polyfrac &rhs){
-        polyfrac r = *this;
+    poly_frac operator *(const poly_frac &rhs){
+        poly_frac r = *this;
         r *= rhs;
         return r;
     }
 
-    polyfrac operator /(const polyfrac &rhs){
-        polyfrac r = *this;
+    poly_frac operator /(const poly_frac &rhs){
+        poly_frac r = *this;
         r /= rhs;
         return r;
     }
 
-    polyfrac &operator +=(const polyfrac &rhs){
+    poly_frac &operator +=(const poly_frac &rhs){
         std::tie(num, den) = reduce(
             expand(num) * expand(rhs.den) + expand(rhs.num) * expand(den),
             expand(den) * expand(rhs.den)
@@ -1818,7 +1855,7 @@ public:
         return *this;
     }
 
-    polyfrac &operator -=(const polyfrac &rhs){
+    poly_frac &operator -=(const poly_frac &rhs){
         std::tie(num, den) = reduce(
             expand(num) * expand(rhs.den) - expand(rhs.num) * expand(den),
             expand(den) * expand(rhs.den)
@@ -1826,51 +1863,51 @@ public:
         return *this;
     }
 
-    polyfrac &operator *=(const polyfrac &rhs){
+    poly_frac &operator *=(const poly_frac &rhs){
         coefficient_mul(num, rhs.num.begin(), rhs.num.end());
         coefficient_mul(den, rhs.den.begin(), rhs.den.end());
         std::tie(num, den) = reduce(expand(num), expand(den));
         return *this;
     }
 
-    polyfrac &operator /=(const polyfrac &rhs){
+    poly_frac &operator /=(const poly_frac &rhs){
         coefficient_mul(num, rhs.den.begin(), rhs.den.end());
         coefficient_mul(den, rhs.num.begin(), rhs.num.end());
         std::tie(num, den) = reduce(expand(num), expand(den));
         return *this;
     }
 
-    polyfrac &operator +=(const poly &rhs){
+    poly_frac &operator +=(const poly &rhs){
         std::tie(num, den) = reduce(expand(num) + rhs * expand(den), expand(den));
         return *this;
     }
 
-    polyfrac &operator -=(const poly &rhs){
+    poly_frac &operator -=(const poly &rhs){
         std::tie(num, den) = reduce(expand(num) - rhs * expand(den), expand(den));
         return *this;
     }
 
-    polyfrac &operator *=(const poly &rhs){
+    poly_frac &operator *=(const poly &rhs){
         factor_list_type f = poly::squarefree_factor_list(rhs);
         num.insert(f.begin(), f.end());
         std::tie(num, den) = reduce(expand(num), expand(den));
         return *this;
     }
 
-    polyfrac &operator /=(const poly &rhs){
+    poly_frac &operator /=(const poly &rhs){
         factor_list_type f = poly::squarefree_factor_list(rhs);
         den.insert(f.begin(), f.end());
         std::tie(num, den) = reduce(expand(num), expand(den));
         return *this;
     }
 
-    polyfrac &operator =(const polyfrac &other){
+    poly_frac &operator =(const poly_frac &other){
         num = other.num;
         den = other.den;
         return *this;
     }
 
-    polyfrac &operator =(polyfrac &&other){
+    poly_frac &operator =(poly_frac &&other){
         num = std::move(other.num);
         den = std::move(other.den);
         return *this;
@@ -1957,11 +1994,11 @@ public:
         return den;
     }
 
-    bool operator ==(const polyfrac &other) const{
+    bool operator ==(const poly_frac &other) const{
         return expand(num) == expand(other.num) && expand(den) == expand(other.den);
     }
 
-    bool operator !=(const polyfrac &other) const{
+    bool operator !=(const poly_frac &other) const{
         return !(*this == other);
     }
 
@@ -1969,41 +2006,41 @@ private:
     factor_list_type num, den;
 };
 
-polyfrac operator +(const poly &a, const polyfrac &B){
-    polyfrac A = a;
+poly_frac operator +(const poly &a, const poly_frac &B){
+    poly_frac A = a;
     return A + B;
 }
 
-polyfrac operator -(const poly &a, const polyfrac &B){
-    polyfrac A = a;
+poly_frac operator -(const poly &a, const poly_frac &B){
+    poly_frac A = a;
     return A - B;
 }
 
-polyfrac operator *(const poly &a, const polyfrac &B){
-    polyfrac A = a;
+poly_frac operator *(const poly &a, const poly_frac &B){
+    poly_frac A = a;
     return A * B;
 }
 
-polyfrac operator /(const poly &a, const polyfrac &B){
-    polyfrac A = a;
+poly_frac operator /(const poly &a, const poly_frac &B){
+    poly_frac A = a;
     return A / B;
 }
 
-polyfrac operator /(const poly &a, const poly &b){
-    polyfrac A = a, B = b;
+poly_frac operator /(const poly &a, const poly &b){
+    poly_frac A = a, B = b;
     return A / B;
 }
 
-std::ostream &operator <<(std::ostream &os, const polyfrac &p){
-    os << polyfrac::expand(p.get_num());
-    const polyfrac::factor_list_type &fl = p.get_den();
+std::ostream &operator <<(std::ostream &os, const poly_frac &p){
+    os << poly_frac::expand(p.get_num());
+    const poly_frac::factor_list_type &fl = p.get_den();
     if(!(fl.size() == 1 && fl.begin()->first == 1)){
-        os << " / " << polyfrac::expand(p.get_den());
+        os << " / " << poly_frac::expand(p.get_den());
     }
     return os;
 }
 
-std::tuple<polyfrac, polyfrac> hermite_reduce_original(const poly &A, const poly &D){
+std::tuple<poly_frac, poly_frac> hermite_reduce_original(const poly &A, const poly &D){
     std::vector<poly> Dn = poly::squarefree(D);
     std::vector<poly> P_An;
     {
@@ -2014,8 +2051,8 @@ std::tuple<polyfrac, polyfrac> hermite_reduce_original(const poly &A, const poly
         P_An = poly::partial_fraction(A, Dp);
     }
     poly &P = P_An[0];
-    polyfrac g = 0;
-    polyfrac h = P + P_An[1] / Dn[0];
+    poly_frac g = 0;
+    poly_frac h = P + P_An[1] / Dn[0];
     for(int k = 2; k - 1 < Dn.size() && Dn[k - 1].deg() > 0; ++k){
         poly V = Dn[k - 1];
         for(int j = k - 1; j >= 1; --j){
@@ -2029,8 +2066,8 @@ std::tuple<polyfrac, polyfrac> hermite_reduce_original(const poly &A, const poly
     return std::make_tuple(g, h);
 }
 
-std::tuple<polyfrac, polyfrac> hermite_reduce_quadratic(poly A, poly D){
-    polyfrac g = 0;
+std::tuple<poly_frac, poly_frac> hermite_reduce_quadratic(poly A, poly D){
+    poly_frac g = 0;
     std::vector<poly> Dn = poly::squarefree(D);
     for(int i = 2; i - 1 < Dn.size() && Dn[i - 1].deg() > 0; ++i){
         poly V = Dn[i - 1];
@@ -2046,8 +2083,8 @@ std::tuple<polyfrac, polyfrac> hermite_reduce_quadratic(poly A, poly D){
     return std::make_tuple(g, A / D);
 }
 
-std::tuple<polyfrac, polyfrac> hermite_reduce_liner(poly A, poly D){
-    polyfrac g = 0;
+std::tuple<poly_frac, poly_frac> hermite_reduce_liner(poly A, poly D){
+    poly_frac g = 0;
     poly Dminus = poly::gcd(D, D.diff());
     poly Dstar = poly::div(D, Dminus);
     while(Dminus.deg() > 0){
@@ -2062,9 +2099,213 @@ std::tuple<polyfrac, polyfrac> hermite_reduce_liner(poly A, poly D){
     return std::make_tuple(g, A / Dstar);
 }
 
-std::tuple<polyfrac, polyfrac> hermite_reduce(const poly &A, const poly &D){
+std::tuple<poly_frac, poly_frac> hermite_reduce(const poly &A, const poly &D){
     return hermite_reduce_liner(A, D);
 }
+
+template<class Var>
+class multivar_poly{
+public:
+    using term_key_type = aux::vector_map<Var, int>;
+    using term_mapped_type = mpq_class;
+    using data_type = aux::vector_map<term_key_type, term_mapped_type>;
+
+    multivar_poly() : data(){}
+    multivar_poly(const multivar_poly &other) : data(other.data){}
+    multivar_poly(multivar_poly &&other) : data(std::move(other.data)){}
+
+    multivar_poly(const Var &var) : data(){
+        term_key_type term;
+        term.insert(term_key_type::value_type(var, 1));
+        data.insert(data_type::value_type(term, 1));
+    }
+
+    multivar_poly(int coe) : data(){
+        term_key_type term;
+        term.insert(term_key_type::value_type(Var(), 1));
+        data.insert(data_type::value_type(term, coe));
+    }
+
+    multivar_poly(int coe, const Var &var) : data(){
+        term_key_type term;
+        term.insert(term_key_type::value_type(var, 1));
+        data.insert(data_type::value_type(term, coe));
+    }
+
+    multivar_poly(int coe, const Var &var, int n) : data(){
+        term_key_type term;
+        term.insert(term_key_type::value_type(var, n));
+        data.insert(data_type::value_type(term, coe));
+    }
+
+    multivar_poly &operator +=(const multivar_poly &other){
+        for(const data_type::value_type &other_term : other.data){
+            auto iter = data.find(other_term.first);
+            if(iter != data.end()){
+                iter->second += other_term.second;
+                if(iter->second == 0){
+                    iter = data.erase(iter);
+                }
+            }else{
+                data.insert(other_term);
+            }
+        }
+        return *this;
+    }
+
+    multivar_poly &operator -=(const multivar_poly &other){
+        for(const data_type::value_type &other_term : other.data){
+            auto iter = data.find(other_term.first);
+            if(iter != data.end()){
+                iter->second -= other_term.second;
+                if(iter->second == 0){
+                    iter = data.erase(iter);
+                }
+            }else{
+                data_type::value_type other = other_term;
+                other.second = -other.second;
+                data.insert(other);
+            }
+        }
+        return *this;
+    }
+
+    multivar_poly &operator *=(const multivar_poly &other){
+        for(data_type::iterator iter = data.begin(); iter != data.end(); ++iter){
+            data_type::value_type &term = *iter;
+            for(const data_type::value_type &other_term : other.data){
+                for(const term_key_type::value_type &other_var : other_term.first){
+                    auto jter = term.first.find(other_var.first);
+                    if(jter == term.first.end()){
+                        term.first.insert(other_var);
+                    }else{
+                        jter->second += other_var.second;
+                        if(jter->second == 0){
+                            jter = term.first.erase(jter);
+                        }
+                    }
+                }
+                term.second *= other_term.second;
+            }
+        }
+        return *this;
+    }
+
+    multivar_poly &operator /=(const multivar_poly &other){
+        for(data_type::iterator iter = data.begin(); iter != data.end(); ++iter){
+            data_type::value_type &term = *iter;
+            for(const data_type::value_type &other_term : other.data){
+                for(const term_key_type::value_type &other_var : other_term.first){
+                    auto jter = term.first.find(other_var.first);
+                    if(jter == term.first.end()){
+                        term_key_type::value_type other = other_var;
+                        other.second = -other.second;
+                        term.first.insert(other_var);
+                    }else{
+                        jter->second -= other_var.second;
+                    }
+                    if(term.second == 0){
+                        iter = data.erase(iter);
+                    }
+                }
+                term.second /= other_term.second;
+            }
+        }
+        return *this;
+    }
+
+    multivar_poly operator +(const multivar_poly &other){
+        multivar_poly r = *this;
+        r += other;
+        return r;
+    }
+
+    multivar_poly operator -(const multivar_poly &other){
+        multivar_poly r = *this;
+        r -= other;
+        return r;
+    }
+
+    multivar_poly operator *(const multivar_poly &other){
+        multivar_poly r = *this;
+        r *= other;
+        return r;
+    }
+
+    multivar_poly operator /(const multivar_poly &other){
+        multivar_poly r = *this;
+        r /= other;
+        return r;
+    }
+
+    class gaussian_elim_no_solution_exception : public std::runtime_error{
+    public:
+        gaussian_elim_no_solution_exception() : std::runtime_error("gaussian elim: no solution."){}
+        gaussian_elim_no_solution_exception(const gaussian_elim_no_solution_exception&) = default;
+    };
+
+    static aux::vector_map<term_key_type, mpq_class> gaussian_elim(const std::vector<std::pair<multivar_poly, mpq_class>> &equations){
+        aux::vector_map<term_key_type, mpq_class> r;
+        std::vector<term_key_type> multivar_set;
+        auto multivar_set_insert = [&](const term_key_type &elem){
+            auto iter = std::lower_bound(multivar_set.begin(), multivar_set.end(), elem);
+            if(iter == multivar_set.end() || *iter != elem){
+                multivar_set.insert(iter, elem);
+            }
+        };
+        for(auto &pair : equations){
+            for(auto &term : pair.first.data){
+                multivar_set_insert(term.first);
+            }
+        }
+        if(multivar_set.size() != equations.size()){
+            throw gaussian_elim_no_solution_exception();
+        }
+        std::size_t N = equations.size();
+        std::vector<std::vector<mpq_class>> M(N);
+        for(std::size_t i = 0; i < N; ++i){
+            M[i].resize(N + 1);
+            M[i][N] = equations[i].second;
+            auto iter = multivar_set.begin();
+            for(std::size_t j = 0; j < N; ++j, ++iter){
+                auto find_result = equations[i].first.data.find(*iter);
+                if(find_result != equations[i].first.data.end()){
+                    M[i][j] = find_result->second;
+                }else{
+                    M[i][j] = 0;
+                }
+            }
+        }
+        for(std::size_t i = 0; i < N; ++i){
+            mpq_class pivot = M[i][i];
+            for(std::size_t j = 0; j < N + 1; ++j){
+                M[i][j] = (1 / pivot) * M[i][j];
+            }
+            for(std::size_t k = i + 1; k < N; ++k){
+                mpq_class mul = M[k][i];
+                for(std::size_t n = i; n < N + 1; ++n){
+                    M[k][n] = M[k][n] - mul * M[i][n];
+                }
+            }
+        }
+        for(int i = static_cast<int>(N - 1); i > 0; --i){
+            for(int k = i - 1; k >= 0; --k){
+                mpq_class mul = M[k][i];
+                for(int n = i; n < N + 1; ++n){
+                    M[k][n] = M[k][n] - mul * M[i][n];
+                }
+            }
+        }
+        auto iter = multivar_set.begin();
+        for(std::size_t i = 0; i < N; ++i, ++iter){
+            r.insert(std::make_pair(*iter, M[i][N]));
+        }
+        return std::move(r);
+    }
+
+private:
+    data_type data;
+};
 
 namespace aux{
     using type_info = int;
@@ -2427,9 +2668,9 @@ void squarefree_test(){
     }
 }
 
-void polyfrac_test(){
+void poly_frac_test(){
     using namespace symbolic_alg;
-    polyfrac pf = poly::parse("x^5 - x^3 - x^2 + 1") / poly::parse("x^3 + 2x^2 + 2x + 1") / poly::parse("-x + 1");
+    poly_frac pf = poly::parse("x^5 - x^3 - x^2 + 1") / poly::parse("x^3 + 2x^2 + 2x + 1") / poly::parse("-x + 1");
     std::cout << pf << std::endl;
     pf *= poly::parse("x^3 + 2x^2 + 2x + 1") * poly::parse("-x + 1");
     std::cout << pf << std::endl;
@@ -2459,7 +2700,83 @@ void hermite_reduce_test(){
     }
 }
 
+void multivar_poly_test_1(){
+    using namespace symbolic_alg;
+    using mvpoly = multivar_poly<std::string>;
+    mvpoly a(2, "x", 2);
+    mvpoly b(3, "x");
+    mvpoly c(4, "x", 3);
+    mvpoly d(1, "y", 3);
+    mvpoly e(1, "x", -6);
+    mvpoly f(1, "y", -3);
+    a *= b;
+    a *= c;
+    a *= d;
+    a *= e;
+    a *= f;
+    return;
+}
+
+void multivar_poly_test_2(){
+    using namespace symbolic_alg;
+    using mvpoly = multivar_poly<std::string>;
+    mvpoly a(2, "x", 2);
+    mvpoly b(3, "x");
+    mvpoly c(1, "x", 2);
+    mvpoly d(3, "x");
+    mvpoly e(3, "x", 2);
+    a += b;
+    a += c;
+    a += d;
+    a -= e;
+    return;
+}
+
+void gaussian_elim_test(){
+    using namespace symbolic_alg;
+    using mvpoly = multivar_poly<std::string>;
+    std::vector<std::pair<mvpoly, mpq_class>> equations;
+    {
+        mvpoly lhs;
+        lhs += mvpoly(1, "x");
+        lhs += mvpoly(1, "y");
+        lhs += mvpoly(1, "z");
+        lhs += mvpoly(1, "w");
+        mpq_class rhs = 10;
+        equations.push_back(std::make_pair(lhs, rhs));
+    }
+    {
+        mvpoly lhs;
+        lhs += mvpoly(2, "x");
+        lhs += mvpoly(1, "y");
+        lhs += mvpoly(2, "z");
+        lhs += mvpoly(1, "w");
+        mpq_class rhs = 14;
+        equations.push_back(std::make_pair(lhs, rhs));
+    }
+    {
+        mvpoly lhs;
+        lhs += mvpoly(1, "x");
+        lhs += mvpoly(2, "y");
+        lhs += mvpoly(3, "z");
+        lhs += mvpoly(-4, "w");
+        mpq_class rhs = -2;
+        equations.push_back(std::make_pair(lhs, rhs));
+    }
+    {
+        mvpoly lhs;
+        lhs += mvpoly(1, "x");
+        lhs += mvpoly(-1, "y");
+        lhs += mvpoly(-1, "z");
+        lhs += mvpoly(1, "w");
+        mpq_class rhs = 0;
+        equations.push_back(std::make_pair(lhs, rhs));
+    }
+    auto solutions = mvpoly::gaussian_elim(equations);
+    return;
+}
+
 int main(){
-    hermite_reduce_test();
+    gaussian_elim_test();
     return 0;
 }
