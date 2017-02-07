@@ -135,19 +135,19 @@ namespace aux{
             return vec.end();
         }
 
-        iterator rbegin(){
+        reverse_iterator rbegin(){
             return vec.rbegin();
         }
 
-        iterator rend(){
+        reverse_iterator rend(){
             return vec.rend();
         }
 
-        const_iterator rbegin() const{
+        const_reverse_iterator rbegin() const{
             return vec.rbegin();
         }
 
-        const_iterator rend() const{
+        const_reverse_iterator rend() const{
             return vec.rend();
         }
 
@@ -157,14 +157,6 @@ namespace aux{
 
         const_iterator cend() const{
             return vec.cend();
-        }
-
-        const_iterator crbegin() const{
-            return vec.crbegin();
-        }
-
-        const_iterator crend() const{
-            return vec.crend();
         }
 
         bool empty() const{
@@ -2110,32 +2102,38 @@ public:
     using term_mapped_type = mpq_class;
     using data_type = aux::vector_map<term_key_type, term_mapped_type>;
 
-    multivar_poly() : data(){}
-    multivar_poly(const multivar_poly &other) : data(other.data){}
-    multivar_poly(multivar_poly &&other) : data(std::move(other.data)){}
+    multivar_poly() : data_ref(data), data(){}
+    multivar_poly(const multivar_poly &other) : data_ref(data),data(other.data){}
+    multivar_poly(multivar_poly &&other) : data_ref(data),data(std::move(other.data)){}
 
-    multivar_poly(const Var &var) : data(){
+    multivar_poly(const Var &var) : data_ref(data),data(){
         term_key_type term;
         term.insert(term_key_type::value_type(var, 1));
         data.insert(data_type::value_type(term, 1));
     }
 
-    multivar_poly(int coe) : data(){
+    multivar_poly(const mpq_class &coe) : data_ref(data),data(){
         term_key_type term;
         term.insert(term_key_type::value_type(Var(), 1));
         data.insert(data_type::value_type(term, coe));
     }
 
-    multivar_poly(int coe, const Var &var) : data(){
+    multivar_poly(const mpq_class & coe, const Var &var) : data_ref(data),data(){
         term_key_type term;
         term.insert(term_key_type::value_type(var, 1));
         data.insert(data_type::value_type(term, coe));
     }
 
-    multivar_poly(int coe, const Var &var, int n) : data(){
+    multivar_poly(const mpq_class & coe, const Var &var, int n) : data_ref(data),data(){
         term_key_type term;
-        term.insert(term_key_type::value_type(var, n));
+        if(n != 0){
+            term.insert(term_key_type::value_type(var, n));
+        }
         data.insert(data_type::value_type(term, coe));
+    }
+
+    multivar_poly(const typename data_type::value_type &term) : data_ref(data), data(){
+        data.insert(term);
     }
 
     multivar_poly &operator +=(const multivar_poly &other){
@@ -2170,47 +2168,23 @@ public:
         return *this;
     }
 
+    multivar_poly &operator =(const multivar_poly &other){
+        data = other.data;
+        return *this;
+    }
+
+    multivar_poly &operator =(multivar_poly &&other){
+        data = std::move(other.data);
+        return *this;
+    }
+
     multivar_poly &operator *=(const multivar_poly &other){
-        for(data_type::iterator iter = data.begin(); iter != data.end(); ++iter){
-            data_type::value_type &term = *iter;
-            for(const data_type::value_type &other_term : other.data){
-                for(const term_key_type::value_type &other_var : other_term.first){
-                    auto jter = term.first.find(other_var.first);
-                    if(jter == term.first.end()){
-                        term.first.insert(other_var);
-                    }else{
-                        jter->second += other_var.second;
-                        if(jter->second == 0){
-                            jter = term.first.erase(jter);
-                        }
-                    }
-                }
-                term.second *= other_term.second;
-            }
-        }
+        *this = *this * other;
         return *this;
     }
 
     multivar_poly &operator /=(const multivar_poly &other){
-        for(data_type::iterator iter = data.begin(); iter != data.end(); ++iter){
-            data_type::value_type &term = *iter;
-            for(const data_type::value_type &other_term : other.data){
-                for(const term_key_type::value_type &other_var : other_term.first){
-                    auto jter = term.first.find(other_var.first);
-                    if(jter == term.first.end()){
-                        term_key_type::value_type other = other_var;
-                        other.second = -other.second;
-                        term.first.insert(other_var);
-                    }else{
-                        jter->second -= other_var.second;
-                    }
-                    if(term.second == 0){
-                        iter = data.erase(iter);
-                    }
-                }
-                term.second /= other_term.second;
-            }
-        }
+        *this = *this / other;
         return *this;
     }
 
@@ -2226,26 +2200,72 @@ public:
         return r;
     }
 
-    multivar_poly operator *(const multivar_poly &other){
-        multivar_poly r = *this;
-        r *= other;
+    multivar_poly operator *(const multivar_poly &other) const{
+        multivar_poly r;
+        for(data_type::const_iterator iter = data.begin(); iter != data.end(); ++iter){
+            const data_type::value_type &term = *iter;
+            for(const data_type::value_type &other_term : other.data){
+                data_type::value_type new_term = term;
+                for(const term_key_type::value_type &other_var : other_term.first){
+                    auto jter = new_term.first.find(other_var.first);
+                    if(jter == new_term.first.end()){
+                        new_term.first.insert(jter, other_var);
+                    }else{
+                        jter->second += other_var.second;
+                        if(jter->second == 0){
+                            jter = new_term.first.erase(jter);
+                        }
+                    }
+                }
+                new_term.second *= other_term.second;
+                r.data.insert(new_term);
+            }
+        }
         return r;
     }
 
     multivar_poly operator /(const multivar_poly &other){
-        multivar_poly r = *this;
-        r /= other;
+        multivar_poly r;
+        for(data_type::const_iterator iter = data.begin(); iter != data.end(); ++iter){
+            const data_type::value_type &term = *iter;
+            for(const data_type::value_type &other_term : other.data){
+                data_type::value_type new_term = term;
+                for(const term_key_type::value_type &other_var : other_term.first){
+                    auto jter = new_term.first.find(other_var.first);
+                    if(jter == new_term.first.end()){
+                        term_key_type::value_type new_var = other_var;
+                        new_var.second = -new_var.second;
+                        new_term.first.insert(jter, new_var);
+                    }else{
+                        jter->second -= other_var.second;
+                        if(jter->second == 0){
+                            jter = new_term.first.erase(jter);
+                        }
+                    }
+                }
+                new_term.second /= other_term.second;
+                r.data.insert(new_term);
+            }
+        }
         return r;
     }
 
-    class gaussian_elim_no_solution_exception : public std::runtime_error{
+    multivar_poly operator -() const{
+        multivar_poly r = *this;
+        for(auto &t : r.data){
+            t.second = -t.second;
+        }
+        return r;
+    }
+
+    class no_unique_solution_exception : public std::runtime_error{
     public:
-        gaussian_elim_no_solution_exception() : std::runtime_error("gaussian elim: no solution."){}
-        gaussian_elim_no_solution_exception(const gaussian_elim_no_solution_exception&) = default;
+        no_unique_solution_exception() : std::runtime_error("gaussian elim: no solution."){}
+        no_unique_solution_exception(const no_unique_solution_exception&) = default;
     };
 
-    static aux::vector_map<term_key_type, mpq_class> gaussian_elim(const std::vector<std::pair<multivar_poly, mpq_class>> &equations){
-        aux::vector_map<term_key_type, mpq_class> r;
+    static aux::vector_map<term_key_type, mpq_class> gaussian_elim(const std::vector<std::pair<multivar_poly, term_mapped_type>> &equations){
+        aux::vector_map<term_key_type, term_mapped_type> r;
         std::vector<term_key_type> multivar_set;
         auto multivar_set_insert = [&](const term_key_type &elem){
             auto iter = std::lower_bound(multivar_set.begin(), multivar_set.end(), elem);
@@ -2259,13 +2279,13 @@ public:
             }
         }
         if(multivar_set.size() != equations.size()){
-            throw gaussian_elim_no_solution_exception();
+            throw no_unique_solution_exception();
         }
         std::size_t N = equations.size();
-        std::vector<std::vector<mpq_class>> M(N);
+        std::vector<std::vector<term_mapped_type>> M(N);
+        std::vector<term_mapped_type> B(N), W(N);
         for(std::size_t i = 0; i < N; ++i){
-            M[i].resize(N + 1);
-            M[i][N] = equations[i].second;
+            M[i].resize(N);
             auto iter = multivar_set.begin();
             for(std::size_t j = 0; j < N; ++j, ++iter){
                 auto find_result = equations[i].first.data.find(*iter);
@@ -2277,31 +2297,88 @@ public:
             }
         }
         for(std::size_t i = 0; i < N; ++i){
-            mpq_class pivot = M[i][i];
-            for(std::size_t j = 0; j < N + 1; ++j){
-                M[i][j] = (1 / pivot) * M[i][j];
-            }
-            for(std::size_t k = i + 1; k < N; ++k){
-                mpq_class mul = M[k][i];
-                for(std::size_t n = i; n < N + 1; ++n){
-                    M[k][n] = M[k][n] - mul * M[i][n];
+            B[i] = equations[i].second;
+        }
+        for(std::size_t k = 0; k < N - 1; ++k){
+            std::size_t p = k;
+            term_mapped_type pmax = (M[k][k] > 0 ? M[k][k] : -M[k][k]);
+            for(std::size_t i = k + 1; i < N; ++i){
+                if((M[i][k] > 0 ? M[i][k] : -M[i][k]) > pmax){
+                    p = i;
+                    pmax = (M[i][k] > 0 ? M[i][k] : -M[i][k]);
                 }
             }
-        }
-        for(int i = static_cast<int>(N - 1); i > 0; --i){
-            for(int k = i - 1; k >= 0; --k){
-                mpq_class mul = M[k][i];
-                for(int n = i; n < N + 1; ++n){
-                    M[k][n] = M[k][n] - mul * M[i][n];
+            if((pmax > 0 ? pmax : -pmax) < 1.0e-12){
+                throw no_unique_solution_exception();
+            }
+            if(p != k){
+                term_mapped_type s;
+                for(std::size_t i = k; i < N; ++i){
+                    s = M[k][i];
+                    M[k][i] = M[p][i];
+                    M[p][i] = s;
                 }
+                s = B[k];
+                B[k] = B[p];
+                B[p] = s;
+            }
+            for(std::size_t i = k + 1; i < N; ++i){
+                W[i] = M[i][k] / M[k][k];
+                M[i][k] = 0.0;
+                for(std::size_t j = k + 1; j < N; ++j){
+                    M[i][j] = M[i][j] - M[k][j] * W[i];
+                }
+                B[i] = B[i] - B[k] * W[i];
             }
         }
-        auto iter = multivar_set.begin();
-        for(std::size_t i = 0; i < N; ++i, ++iter){
-            r.insert(std::make_pair(*iter, M[i][N]));
+        for(std::size_t counter = N; counter > 0; --counter){
+			std::size_t i = counter - 1;
+            for(std::size_t j = i + 1; j < N; ++j){
+                B[i] = B[i] - M[i][j] * B[j];
+                M[i][j] = 0.0;
+            }
+            B[i] = B[i] / M[i][i];
+            M[i][i] = 1.0;
         }
-        return std::move(r);
+        {
+            auto iter = multivar_set.begin();
+            for(std::size_t i = 0; i < N; ++i, ++iter){
+				r.insert(std::make_pair(*iter, B[i]));
+            }
+            return std::move(r);
+        }
     }
+
+    multivar_poly diff(const Var &x, int n = 1) const{
+        multivar_poly r = *this;
+        for(auto term_iter = r.data.begin(); term_iter != r.data.end(); ){
+            auto &term = *term_iter;
+            auto fact_iter = term.first.find(x);
+            if(fact_iter != term.first.end()){
+                term.second *= fact_iter->second;
+                fact_iter->second -= 1;
+                if(fact_iter->second == 0){
+                    term.first.erase(fact_iter);
+                }
+            }else{
+                term_iter = r.data.erase(term_iter);
+                continue;
+            }
+            ++term_iter;
+            continue;
+        }
+        return r;
+    }
+
+    static multivar_poly singlevar_to_multivar(const poly &p, const Var &x){
+        multivar_poly r;
+        for(auto &term : p){
+            r += multivar_poly(term.coe, x, term.deg);
+        }
+        return r;
+    }
+
+    const data_type &data_ref;
 
 private:
     data_type data;
@@ -2738,45 +2815,163 @@ void gaussian_elim_test(){
     std::vector<std::pair<mvpoly, mpq_class>> equations;
     {
         mvpoly lhs;
-        lhs += mvpoly(1, "x");
-        lhs += mvpoly(1, "y");
-        lhs += mvpoly(1, "z");
-        lhs += mvpoly(1, "w");
-        mpq_class rhs = 10;
-        equations.push_back(std::make_pair(lhs, rhs));
-    }
-    {
-        mvpoly lhs;
         lhs += mvpoly(2, "x");
-        lhs += mvpoly(1, "y");
-        lhs += mvpoly(2, "z");
-        lhs += mvpoly(1, "w");
-        mpq_class rhs = 14;
+        lhs += mvpoly(0, "y");
+        lhs += mvpoly(0, "z");
+        lhs += mvpoly(0, "w");
+        mpq_class rhs = 1;
         equations.push_back(std::make_pair(lhs, rhs));
     }
     {
         mvpoly lhs;
-        lhs += mvpoly(1, "x");
+        lhs += mvpoly(0, "x");
         lhs += mvpoly(2, "y");
-        lhs += mvpoly(3, "z");
-        lhs += mvpoly(-4, "w");
-        mpq_class rhs = -2;
+        lhs += mvpoly(0, "z");
+        lhs += mvpoly(0, "w");
+        mpq_class rhs = 2;
         equations.push_back(std::make_pair(lhs, rhs));
     }
     {
         mvpoly lhs;
-        lhs += mvpoly(1, "x");
-        lhs += mvpoly(-1, "y");
-        lhs += mvpoly(-1, "z");
-        lhs += mvpoly(1, "w");
-        mpq_class rhs = 0;
+        lhs += mvpoly(0, "x");
+        lhs += mvpoly(0, "y");
+        lhs += mvpoly(2, "z");
+        lhs += mvpoly(0, "w");
+        mpq_class rhs = 3;
+        equations.push_back(std::make_pair(lhs, rhs));
+    }
+    {
+        mvpoly lhs;
+        lhs += mvpoly(0, "x");
+        lhs += mvpoly(0, "y");
+        lhs += mvpoly(0, "z");
+        lhs += mvpoly(2, "w");
+        mpq_class rhs = 4;
         equations.push_back(std::make_pair(lhs, rhs));
     }
     auto solutions = mvpoly::gaussian_elim(equations);
     return;
 }
 
+void gaussian_elim_test2(){
+    using namespace symbolic_alg;
+    using mvpoly = multivar_poly<std::string>;
+    std::vector<std::pair<mvpoly, mpq_class>> equations;
+    {
+        mvpoly lhs;
+        lhs += mvpoly(0, "b0");
+		lhs += mvpoly(0, "b1");
+		lhs += mvpoly(0, "b2");
+		lhs += mvpoly(0, "b3");
+		lhs += mvpoly(0, "b4");
+		lhs += mvpoly(0, "c0");
+		lhs += mvpoly(0, "c1");
+		lhs += mvpoly(-1, "c2");
+        mpq_class rhs = -1;
+        equations.push_back(std::make_pair(lhs, rhs));
+    }
+	{
+		mvpoly lhs;
+		lhs += mvpoly(0, "b0");
+		lhs += mvpoly(0, "b1");
+		lhs += mvpoly(0, "b2");
+		lhs += mvpoly(0, "b3");
+		lhs += mvpoly(1, "b4");
+		lhs += mvpoly(0, "c0");
+		lhs += mvpoly(-1, "c1");
+		lhs += mvpoly(0, "c2");
+		mpq_class rhs = 0;
+		equations.push_back(std::make_pair(lhs, rhs));
+	}
+	{
+		mvpoly lhs;
+		lhs += mvpoly(0, "b0");
+		lhs += mvpoly(0, "b1");
+		lhs += mvpoly(0, "b2");
+		lhs += mvpoly(2, "b3");
+		lhs += mvpoly(0, "b4");
+		lhs += mvpoly(-1, "c0");
+		lhs += mvpoly(0, "c1");
+		lhs += mvpoly(-4, "c2");
+		mpq_class rhs = 0;
+		equations.push_back(std::make_pair(lhs, rhs));
+	}
+	{
+		mvpoly lhs;
+		lhs += mvpoly(0, "b0");
+		lhs += mvpoly(0, "b1");
+		lhs += mvpoly(3, "b2");
+		lhs += mvpoly(0, "b3");
+		lhs += mvpoly(-6, "b4");
+		lhs += mvpoly(0, "c0");
+		lhs += mvpoly(-4, "c1");
+		lhs += mvpoly(0, "c2");
+		mpq_class rhs = 24;
+		equations.push_back(std::make_pair(lhs, rhs));
+	}
+	{
+		mvpoly lhs;
+		lhs += mvpoly(0, "b0");
+		lhs += mvpoly(4, "b1");
+		lhs += mvpoly(0, "b2");
+		lhs += mvpoly(-4, "b3");
+		lhs += mvpoly(0, "b4");
+		lhs += mvpoly(-4, "c0");
+		lhs += mvpoly(0, "c1");
+		lhs += mvpoly(-4, "c2");
+		mpq_class rhs = 0;
+		equations.push_back(std::make_pair(lhs, rhs));
+	}
+	{
+		mvpoly lhs;
+		lhs += mvpoly(5, "b0");
+		lhs += mvpoly(0, "b1");
+		lhs += mvpoly(-2, "b2");
+		lhs += mvpoly(0, "b3");
+		lhs += mvpoly(0, "b4");
+		lhs += mvpoly(0, "c0");
+		lhs += mvpoly(-4, "c1");
+		lhs += mvpoly(0, "c2");
+		mpq_class rhs = 4;
+		equations.push_back(std::make_pair(lhs, rhs));
+	}
+	{
+		mvpoly lhs;
+		lhs += mvpoly(0, "b0");
+		lhs += mvpoly(0, "b1");
+		lhs += mvpoly(0, "b2");
+		lhs += mvpoly(0, "b3");
+		lhs += mvpoly(0, "b4");
+		lhs += mvpoly(-4, "c0");
+		lhs += mvpoly(0, "c1");
+		lhs += mvpoly(0, "c2");
+		mpq_class rhs = -8;
+		equations.push_back(std::make_pair(lhs, rhs));
+	}
+	{
+		mvpoly lhs;
+		lhs += mvpoly(2, "b0");
+		lhs += mvpoly(0, "b1");
+		lhs += mvpoly(0, "b2");
+		lhs += mvpoly(0, "b3");
+		lhs += mvpoly(0, "b4");
+		lhs += mvpoly(0, "c0");
+		lhs += mvpoly(0, "c1");
+		lhs += mvpoly(0, "c2");
+		mpq_class rhs = 8;
+		equations.push_back(std::make_pair(lhs, rhs));
+	}
+    auto solutions = mvpoly::gaussian_elim(equations);
+	for(auto &&i : solutions){
+		for(auto &&j : i.first){
+			std::cout << j.first;
+		}
+		std::cout << " : " << i.second << std::endl;
+	}
+    return;
+}
+
 int main(){
-    gaussian_elim_test();
+	gaussian_elim_test2();
     return 0;
 }
